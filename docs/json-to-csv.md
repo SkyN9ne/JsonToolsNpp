@@ -1,5 +1,5 @@
 # Converting JSON to CSVs #
-This app uses an [algorithm](https://github.com/molsonkiko/JsonToolsNppPlugin/blob/main/JSONTools/JsonTabularize.cs) based on analysis of a JSON iterable's [schema](https://github.com/molsonkiko/JsonToolsNppPlugin/blob/main/JSONTools/JsonSchema.cs) to attempt to convert it into a table.
+This app uses an [algorithm](https://github.com/molsonkiko/JsonToolsNppPlugin/blob/main/JsonToolsNppPlugin/JSONTools/JsonTabularize.cs) based on analysis of a JSON iterable's [schema](https://github.com/molsonkiko/JsonToolsNppPlugin/blob/main/JsonToolsNppPlugin/JSONTools/JsonSchemaMaker.cs) (generated on the fly) to attempt to convert it into a table.
 
 At present, four [strategies](#strategies) for making a table are supported.
 
@@ -114,6 +114,8 @@ will NOT be tabularized because it is an array of objects that don't contain all
 
 This approach is similar to NO_RECURSION, but instead of refusing to run if it encounters
 non-scalars in the table, it stringifies them.
+
+*__WARNING__: this option does not work well with `','` as the separator!* You should use `'\t'` as the separator instead.
 
 This strategy might be useful if you want to partially deconstruct your JSON so that some fields are their own columns and more complex deeply nested fields are left as JSON, which an RDBMS like [PostgreSQL](https://www.postgresqltutorial.com/postgresql-tutorial/postgresql-json/) can convert into a JSON column type.
 

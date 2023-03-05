@@ -1,5 +1,5 @@
 # Change Log
-All [notable changes](#490---2022-01-11) to this project will be documented in this file.
+All [notable changes](#4101---2023-03-02) to this project will be documented in this file.
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
@@ -8,19 +8,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
  
 ### To Be Added
 
-1. Show multiple validation problems. 
+1. Show multiple schema validation problems. 
 2. Add a thing that maps schema filenames to filename patterns, so that files with certain name patterns are automatically validated a la VSCode.
 3. Add parsing of unquoted strings when linter is active.
 	(would this cause too much of a performance hit?)
  
 ### To Be Changed
 
-- Replace the folder browser dialog for the grepper form with a text box where the `Tab` key reveals a dropdown with all subfolders of the current folder starting with whatever substring is after the last `\\`. This could be easier to use and more friendly than the current `FolderBrowserDialog`.
 - Make it so that RemesPath assignment queries like `@.foo = @ + 1` only change the parts of the tree viewer that were affected by the assignment. Would greatly reduce latency because that's the slowest operation.
 
 ### To Be Fixed
 
-- Various bugs with multi-instance/split view: most things only apply to one view, regardless of which one the user is currently using.
 - Fix bugs in YamlDumper.cs:
 	- fails when key contains quotes and colon
 	- fails when value contains quotes and newline
@@ -30,10 +28,52 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Improve how well the caret tracks the node selected in the query tree, after a query that selects a subset of nodes. The iterables have their line number set to 0.
 - Get rid of __ALL__ dinging sounds from the forms, including the `TreeView` control in the TreeViewer.
 - When a tree viewer is refreshed using JSON from a file with a different name, the title of the docking form that the user sees doesn't change to reflect the new file. For example, a tree viewer is opened up for `foo.json` and then refreshed with a buffer named `bar.json`, and the title of the docking form still reads `Json Tree View for foo.json`.
-	- This is also true if a file with a tree viewer is renamed.
-- Using the [Compare plugin](https://github.com/pnedev/comparePlus) causes the currently open tree view to close. Probably a problem on their end, no idea how to fix.
+	- This is also true if a file with a tree viewer is renamed, e.g., the file `foo.json` is renamed to `bar.json`, but the tree viewer still says `Json Tree View for foo.json`.
+- Linter doesn't work on *empty* arrays or objects with no close bracket (e.g., `[1` is parsed as `[1]` but `[` raises an error)
 
-## [4.9.0] - 2022-01-11
+## [4.10.1] - 2023-03-02
+
+### Fixed
+
+1. Hopefully eliminated crash bug that sometimes seems to happen because a file that had a tree viewer associated with it was renamed. This bug is really unpredictable, so it may not be gone.
+2. Fixed bug in [Main](/JsonToolsNppPlugin/Main.cs#L360) (based on failure to read [SCI_GETTEXT documentation](https://www.scintilla.org/ScintillaDoc.html#SCI_GETTEXT)) that caused this plugin to be incompatible with versions of Notepad++ older than 8.4.1.
+
+### Changed
+1. Changed [RemesPath `s_sub` function](/docs/RemesPath.md#vectorized-functions) so that it either does regex-replace or simple string-replace, depending on the type of the second parameter.
+
+#### Added
+1. [DSON emitter and UDL](/docs/README.md#dson) takes this plugin to the moon!
+
+## [4.10.0] - 2023-02-15
+
+### Added
+
+1. Numbers (including `Infinity`) with leading `+` signs can now be parsed if linting is turned on. If linting is not active, they will still raise an error.
+
+### Changed
+
+2. For performance reasons, the plugin no longer automatically turns on the JSON lexer for very long JSON files when pretty-printing, compressing, or showing query results. This is configurable via `Settings->max_size_full_tree_MB`.
+3. Arrays and objects with a very large number of direct children no longer result in a tree view with pointers to every direct child. Instead, you just get pointers to a few evenly spaced children. Read more [here](/docs/README.md#changing-how-much-json-tree-is-displayed).
+
+## [4.9.2] - 2023-02-06
+
+### Fixed
+
+1. Previously if you used the `Save query result` button in the tree viewer, and the JSON contained non-ascii characters like 😀, the JSON would cut off early. The `JSON from files and APIs` form had the same problem when viewing results in a buffer.
+
+## [4.9.1] - 2023-01-25
+
+### Fixed
+
+1. Prior to this release, JsonTools didn't track the active view/instance if there were multiple views/instances open. Now the plugin will track which view/instance you are currently editing and perform plugin actions accordingly.
+
+## [4.9.0.1] - 2023-01-12
+
+### Fixed
+
+1. Problems with `stringify iterables` strategy of JSON->CSV with objects mapping to arrays where some of the arrays have unequal length.
+
+## [4.9.0] - 2023-01-11
 
 ### Changed
 
@@ -41,7 +81,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 2. true and false will be treated as 1 and 0 respectively for the purposes of comparison operations.
 3. Any comparison of an integer, boolean, or float to anything not of one of those types will raise an error.
 
-## [4.8.2] - 2022-01-09
+## [4.8.2] - 2023-01-09
 
 ### Added
 

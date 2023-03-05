@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Text;
 using JSON_Tools.PluginInfrastructure;
+using JSON_Tools.Utils;
 
 namespace Kbg.NppPluginNET.PluginInfrastructure
 {
@@ -25,6 +26,8 @@ namespace Kbg.NppPluginNET.PluginInfrastructure
 		Color GetDefaultForegroundColor();
 		Color GetDefaultBackgroundColor();
 		string GetConfigDirectory();
+		int[] GetNppVersion();
+		void SetCurrentBufferInternalName(string newName);
 	}
 
 	/// <summary>
@@ -174,6 +177,30 @@ namespace Kbg.NppPluginNET.PluginInfrastructure
 			Win32.SendMessage(PluginBase.nppData._nppHandle, (uint)NppMsg.NPPM_GETPLUGINSCONFIGDIR, Win32.MAX_PATH, sbIniFilePath);
 			return sbIniFilePath.ToString();
 		}
+
+		/// <summary>
+		/// 2-int array. First entry: major version. Second entry: minor version
+		/// </summary>
+		/// <returns></returns>
+		public int[] GetNppVersion()
+		{
+			// the low word (i.e., version & 0xffff
+			int version = Win32.SendMessage(PluginBase.nppData._nppHandle, (uint)NppMsg.NPPM_GETNPPVERSION, 0, 0).ToInt32();
+			int minor = version & 0xffff;
+			int major = version >> 16;
+			return new int[] { major, minor };
+        }
+
+		/// <summary>
+		/// Changes the apparent name of the current buffer. Does not work on files that have already been saved to disk.<br></br>
+		/// </summary>
+		/// <param name="newName"></param>
+		public void SetCurrentBufferInternalName(string newName)
+		{
+            long bufferId = Win32.SendMessage(PluginBase.nppData._nppHandle, (uint)NppMsg.NPPM_GETCURRENTBUFFERID, 0, 0).ToInt64();
+            // change the current file extension to ".dson" (this command only works for unsaved files, but of course we just made an unsaved file)
+            Win32.SendMessage(PluginBase.nppData._nppHandle, (uint)NppMsg.NPPM_INTERNAL_SETFILENAME, (IntPtr)bufferId, newName);
+        }
 	}
 
 	/// <summary>

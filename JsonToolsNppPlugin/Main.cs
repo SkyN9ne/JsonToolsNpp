@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -15,6 +14,7 @@ using JSON_Tools.JSON_Tools;
 using JSON_Tools.Utils;
 using JSON_Tools.Forms;
 using JSON_Tools.Tests;
+using System.Runtime.InteropServices.WindowsRuntime;
 
 namespace Kbg.NppPluginNET
 {
@@ -50,7 +50,6 @@ namespace Kbg.NppPluginNET
         static internal int jsonTreeId = -1;
         static internal int grepperFormId = -1;
         static internal int AboutFormId = -1;
-        //static internal int nodeSelectedLabelId = -1;
         #endregion
 
         #region " Startup/CleanUp "
@@ -88,7 +87,8 @@ namespace Kbg.NppPluginNET
             PluginBase.SetCommand(14, "---", null);
             PluginBase.SetCommand(15, "JSON to &YAML", DumpYaml);
             PluginBase.SetCommand(16, "Run &tests", async () => await TestRunner.RunAll());
-            PluginBase.SetCommand(17, "A&bout", ShowAboutForm); AboutFormId = 16;
+            PluginBase.SetCommand(17, "A&bout", ShowAboutForm); AboutFormId = 17;
+            PluginBase.SetCommand(18, "&Wow such doge", Dogeify);
 
             //// read schemas_to_fname_patterns.json in config directory (if it exists)
             //string config_dir = Npp.notepad.GetConfigDirectory();
@@ -126,6 +126,10 @@ namespace Kbg.NppPluginNET
             switch (code)
             {
                 case (uint)NppMsg.NPPN_BUFFERACTIVATED:
+                    // When a new buffer is activated, we need to reset the connector to the Scintilla editing component.
+                    // This is usually unnecessary, but if there are multiple instances or multiple views,
+                    // we need to track which of the currently visible buffers are actually being edited.
+                    Npp.editor = new ScintillaGateway(PluginBase.GetCurrentScintilla());
                     string new_fname = Npp.notepad.GetFilePath(notification.Header.IdFrom);
                     if (active_fname != null)
                     {
@@ -297,7 +301,10 @@ namespace Kbg.NppPluginNET
                 grepperForm.Close();
             foreach (string key in treeViewers.Keys)
             {
-                treeViewers[key].Dispose();
+                TreeViewer tv = treeViewers[key];
+                if (tv == null || !tv.IsDisposed)
+                    continue;
+                tv.Dispose();
                 treeViewers[key] = null;
             }
             //if (schemas_to_fname_patterns.Length == 0) return;
@@ -350,7 +357,7 @@ namespace Kbg.NppPluginNET
         {
             int len = Npp.editor.GetLength();
             string fname = Npp.notepad.GetCurrentFilePath();
-            string text = Npp.editor.GetText(len);
+            string text = Npp.editor.GetText(len + 1);
             JNode json = new JNode();
             try
             {
@@ -390,6 +397,21 @@ namespace Kbg.NppPluginNET
             return json;
         }
 
+        /// <summary>
+        /// create a new file and pretty-print this JSON in it, then set the lexer language to JSON.
+        /// </summary>
+        /// <param name="json"></param>
+        public static void PrettyPrintJsonInNewFile(JNode json)
+        {
+            string printed = json.PrettyPrintAndChangeLineNumbers(settings.indent_pretty_print, settings.sort_keys, settings.pretty_print_style);
+            Npp.notepad.FileNew();
+            Npp.editor.SetText(printed);
+            Npp.SetLangJson();
+        }
+
+        /// <summary>
+        /// overwrite the current file with its JSON in pretty-printed format
+        /// </summary>
         static void PrettyPrintJson()
         {
             JNode json = TryParseJson();
@@ -398,6 +420,9 @@ namespace Kbg.NppPluginNET
             Npp.SetLangJson();
         }
 
+        /// <summary>
+        /// overwrite the current file with its JSON in compressed format
+        /// </summary>
         static void CompressJson()
         {
             JNode json = TryParseJson();
@@ -460,7 +485,7 @@ namespace Kbg.NppPluginNET
                 result = arr.ToJsonLines(settings.sort_keys, ":", ",");
             else
                 result = arr.ToJsonLines(settings.sort_keys);
-            Npp.editor.AppendText(result.Length, result);
+            Npp.editor.SetText(result);
         }
 
         //form opening stuff
@@ -607,10 +632,7 @@ namespace Kbg.NppPluginNET
                 );
                 return;
             }
-            Npp.notepad.FileNew();
-            string schema_str = schema.PrettyPrintAndChangeLineNumbers(settings.indent_pretty_print, settings.sort_keys, settings.pretty_print_style);
-            Npp.editor.AppendText(Encoding.UTF8.GetByteCount(schema_str), schema_str);
-            Npp.SetLangJson();
+            PrettyPrintJsonInNewFile(schema);
         }
 
         /// <summary>
@@ -644,11 +666,7 @@ namespace Kbg.NppPluginNET
                     return;
                 }
             }
-            Npp.notepad.FileNew();
-            string randomJsonStr = randomJson.PrettyPrintAndChangeLineNumbers(settings.indent_pretty_print, settings.sort_keys, settings.pretty_print_style);
-            int byteCount = Encoding.UTF8.GetByteCount(randomJsonStr);
-            Npp.editor.AppendText(byteCount, randomJsonStr);
-            Npp.SetLangJson();
+            PrettyPrintJsonInNewFile(randomJson);
         }
 
         /// <summary>
@@ -762,6 +780,46 @@ namespace Kbg.NppPluginNET
             AboutForm aboutForm = new AboutForm();
             aboutForm.ShowDialog();
             aboutForm.Focus();
+        }
+
+        static void Dogeify()
+        {
+            JNode json = TryParseJson();
+            if (json == null) return;
+            DirectoryInfo userDefinedLangPath = new DirectoryInfo(Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Notepad++",
+                "userDefineLangs"));
+            if (userDefinedLangPath.Exists)
+            {
+                FileInfo dsonUDLPath = new FileInfo(Path.Combine(
+                    Npp.notepad.GetNppPath(),
+                    "plugins",
+                    "JsonTools",
+                    "DSON UDL.xml"
+                ));
+                string targetPath = Path.Combine(userDefinedLangPath.FullName, "dson.xml");
+                if (dsonUDLPath.Exists && !File.Exists(targetPath))
+                {
+                    dsonUDLPath.CopyTo(targetPath);
+                }
+            }
+            // add the UDL file to the userDefinedLangs folder so that it can colorize the new file
+            try
+            {
+                string dson = Dson.Dump(json);
+                Npp.notepad.FileNew();
+                Npp.editor.SetText(dson);
+                Npp.editor.AppendText(2, "\r\n");
+                string newName = Npp.notepad.GetCurrentFilePath() + ".dson";
+                Npp.notepad.SetCurrentBufferInternalName(newName);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Could not convert JSON to DSON. Got exception:\r\n{ex.ToString()}",
+                    "such error very sad",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         //static void MapSchemasToFnamePatterns()
