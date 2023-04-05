@@ -10,6 +10,7 @@ Any issues, feel free to email me at mjolsonsfca@gmail.com or raise an [issue](h
 1. [Pretty-print JSON](/docs/README.md#pretty_print_style) so that it's spread out over multiple lines.
 2. [Compress JSON](/docs/README.md#minimal_whitespace_compression) so that it has little or no unnecessary whitespace.
 3. Change the settings to [enable the parsing of documents that have various syntax errors](/docs/README.md#parser-settings) (using the `linting` setting in settings):
+    * [JSON with comments](/docs/README.md#parser-settings) (both [Python-style](/CHANGELOG.md#4120---2023-03-28) and JavaScript style)
     * string literals containing newlines
     * string literals enclosed by ' instead of "
     * unterminated string literals (lint shows location of starting quote)
@@ -29,7 +30,7 @@ Any issues, feel free to email me at mjolsonsfca@gmail.com or raise an [issue](h
 7. Query and edit JSON with a [find/replace form](/docs/README.md#find-and-replace-form) and the [RemesPath](/docs/RemesPath.md) query language.
 8. Parse [JSON Lines](/docs/README.md#json-lines-documents) documents.
 9. [A form for gettting JSON from APIs or many different local files](/docs/README.md#get-json-from-files-and-apis).
-10. [JSON schema validation](/docs/README.md#validating-json-against-json-schema)
+10. [JSON schema validation](/docs/README.md#validating-json-against-json-schema), including [automatic validation based on filenames](/docs/README.md#automatic-validation-of-json-against-json-schema).
 11. [Generation of random JSON](/docs/README.md#generating-random-json-from-a-schema)
 12. [Generation of JSON schema from JSON](/docs/README.md#generating-json-schema-from-json)
 
@@ -67,7 +68,7 @@ Every version up to and including [3.7.2.1](https://github.com/molsonkiko/JsonTo
 
 This plugin is not the best for working with really huge JSON files (say 50+ megabytes). As of version `0.3.0`, my [HugeFiles](https://github.com/molsonkiko/HugeFiles) plugin can break a JSON file up into chunks such that every chunk is syntactically valid JSON. This way you don't need to read the entire file into the text editor, and you can look at one chunk at a time. You can also use this plugin to perform simple find/replace operations on the entire file (maybe eventually allowing control over which sections of the file to edit). Finally, the plugin allows a very large JSON file to be broken up into separate syntactically valid JSON files, which may be easier to use.
 
-[JSMinNPP](https://github.com/sunjw/jstoolnpp) is a good plugin with prettier pretty-printing and a much faster tree viewer. This plugin also features JavaScript minification.
+[JSMinNPP](https://github.com/sunjw/jstoolnpp) is a good plugin with prettier pretty-printing and a much faster tree viewer. This plugin also features JavaScript minification. [JSON Viewer](https://github.com/kapilratnani/JSON-Viewer) also has a faster tree viewer.
 
 While not a JSON plugin per se, [PythonScript](https://github.com/bruderstein/PythonScript) enables Notepad++ users to customize the editor with Python scripts. Since Python has an excellent native JSON library, you could easily use this plugin to create custom scripts for working with JSON.
 
@@ -79,7 +80,7 @@ Because Python has good 3rd-party packages for working with [YAML](https://pypi.
 
 VSCode also has a built-in JSON tree viewer and some support for searching for keys and indices in JSON.
 
-VSCode has many useful tools for working with JSON Schema. VSCode's JSON Schema validation is much more robust than what this plugin offers. You can also configure the editor to [automatically use a certain JSON schema to validate JSON with a certain file path](https://code.visualstudio.com/Docs/languages/json#_json-schemas-and-settings). For example, you could configure the editor to always parse files with names like `*tweet*.json` with the schema `tweet_schema.json`.
+VSCode has many useful tools for working with JSON Schema. VSCode's JSON Schema validation is much more robust than what this plugin currently offers. You can also configure the editor to [automatically use a certain JSON schema to validate JSON with a certain file path](https://code.visualstudio.com/Docs/languages/json#_json-schemas-and-settings). For example, you could configure the editor to always parse files with names like `*tweet*.json` with the schema `tweet_schema.json`. *Note: as of version [4.11](/CHANGELOG.md#4110---2023-03-15), a similar feature exists in this plugin.*
 
 The [JSON Tools](https://marketplace.visualstudio.com/items?itemName=eriklynd.json-tools) plugin provides the same pretty-print and minify functionalities as this plugin.
 
@@ -87,7 +88,7 @@ Finally, the [Encode/Decode](https://github.com/mitchdenny/ecdc) plugin allows f
 
 ### Emacs ###
 
-Consult [this list](https://github.com/emacs-tw/awesome-emacs). One Emacs plugin, [JSON mode](https://github.com/joshwnj/json-mode) inspired the `Path to current line` feature of this plugin.
+Consult [this list](https://github.com/emacs-tw/awesome-emacs). One Emacs plugin, [JSON mode](https://github.com/joshwnj/json-mode), inspired the `Path to current line` feature of this plugin.
 
 ### Python ###
 

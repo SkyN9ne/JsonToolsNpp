@@ -55,6 +55,17 @@ namespace JSON_Tools.JSON_Tools
             }
         }
 
+        public static Dictionary<string, Dtype> typeNameToDtype = new Dictionary<string, Dtype>
+        {
+            { "string", Dtype.STR },
+            { "number", Dtype.FLOAT },
+            { "integer", Dtype.INT },
+            { "array", Dtype.ARR },
+            { "object", Dtype.OBJ },
+            { "boolean", Dtype.BOOL },
+            { "null", Dtype.NULL }
+        };
+
         public static bool IsSingleDtype(Dtype x)
         {
             return x == Dtype.ARR
@@ -70,7 +81,7 @@ namespace JSON_Tools.JSON_Tools
                 || x == Dtype.SLICE;
         }
 
-        private static Dtype DtypeUnion(Dtype a, Dtype b)
+        public static Dtype DtypeUnion(Dtype a, Dtype b)
         {
             var together = a | b;
             if ((together & Dtype.FLOAT_OR_INT) == Dtype.FLOAT_OR_INT)

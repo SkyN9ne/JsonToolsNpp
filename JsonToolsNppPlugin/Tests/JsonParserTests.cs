@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using JSON_Tools.JSON_Tools;
 using JSON_Tools.Utils;
 
@@ -414,6 +416,30 @@ instead got
                 }
             }
             #endregion
+            #region TestJRegexToString
+            var arrayOfJRegexes = new JArray(0, new JNode[]{ 
+                new JRegex(new Regex(".")),
+                new JRegex(new Regex("(\")")),
+                new JRegex(new Regex("\\d+[a-z]\\\\"))
+            }.ToList());
+            var correctJRegexArrayRepr = "[\".\", \"(\\\")\", \"\\\\d+[a-z]\\\\\\\\\"]";
+            ii++;
+            string gotRepr = correctJRegexArrayRepr;
+            try
+            {
+                gotRepr = arrayOfJRegexes.ToString();
+            }
+            catch (Exception ex)
+            {
+                tests_failed++;
+                Npp.AddLine($"While trying to get the string representation of JRegex array {correctJRegexArrayRepr}\r\ngot error\r\n{ex}");
+            }
+            if (gotRepr != correctJRegexArrayRepr)
+            {
+                tests_failed++;
+                Npp.AddLine($"JRegex ToString() should return a string that would reproduce the original regex.\r\nExpected\r\n{correctJRegexArrayRepr}\r\nGot\r\n{gotRepr}");
+            }
+            #endregion
 
             Npp.AddLine($"Failed {tests_failed} tests.");
             Npp.AddLine($"Passed {ii - tests_failed} tests.");
@@ -481,12 +507,26 @@ multiline comment
                 new object[]{ "{'a': [ /* internal comment */ 2 ]}", TryParse("{\"a\": [2]}", simpleparser) },
                 new object[]{ "[1, 2] // trailing comment", TryParse("[1, 2]", simpleparser) },
                 new object[]{ "// the comments return!\n[2]", TryParse("[2]", simpleparser) },
+                new object[]{ "# python comment at start of file\n[2]", TryParse("[2]", simpleparser) },
+                new object[]{ "[1, 2] # python comment at end of file", TryParse("[1, 2]", simpleparser) },
+                new object[]{ "[1, 2]\r\n# python comment\r\n# another python comment", TryParse("[1, 2]", simpleparser) },
                 new object[]{ @"
                   /* multiline comment 
                    */
                   /* followed by another multiline comment */
                  // followed by a single line comment 
                  /* and then a multiline comment */ 
+                 [1, 2]
+                 /* and one last multiline comment */", TryParse("[1, 2]", simpleparser) },
+                new object[]{ @"
+                  /* multiline comment 
+                   */
+                   # and a Python-style comment
+                // and a JavaScript-style single-line comment
+                 # then Python comment
+                 /* and then a multiline comment */ 
+            # another python comment
+                  # another python comment
                  [1, 2]
                  /* and one last multiline comment */", TryParse("[1, 2]", simpleparser) }
             };

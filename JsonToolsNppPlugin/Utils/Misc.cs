@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Reflection;
 using System.Text;
 using System.Windows.Forms;
@@ -118,11 +119,12 @@ namespace JSON_Tools.Utils
             return version;
         }
 
-        //public static DateTime LastSavedTime(string fname)
-        //{
-        //    DateTime now = DateTime.Now;
-        //    //NppMsg msg = NppMsg.
-        //    return now;
-        //}
+        public static void CreateConfigSubDirectoryIfNotExists()
+        {
+            var jsonToolsConfigDir = Path.Combine(Npp.notepad.GetConfigDirectory(), Main.PluginName);
+            var jsonToolsConfigDirInfo = new DirectoryInfo(jsonToolsConfigDir);
+            if (!jsonToolsConfigDirInfo.Exists)
+                jsonToolsConfigDirInfo.Create();
+        }
     }
 }

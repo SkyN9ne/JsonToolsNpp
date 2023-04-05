@@ -84,7 +84,7 @@ You'll notice that icons appear next to the nodes in the tree. They are as follo
 
 By default, this app can parse a superset of JSON that is very slightly more permissive than the [original JSON specification](https://json.org). This app parses `NaN` as the floating point `Not-A-Number` and `Infinity` as the floating point Infinity.
 
-You can change the settings to make the parser more or less inclusive. For example, the original spec doesn't allow strings to be surrounded in single quotes, nor does it allow JavaScript comments in the file. Thus, such JSON will cause our parser to throw an error.
+You can change the settings to make the parser more or less inclusive. For example, the original spec doesn't allow strings to be surrounded in single quotes, nor does it allow comments in the file. Thus, such JSON will cause our parser to throw an error.
 
 ![The default parser settings don't allow singlequoted strings or comments](/docs/json%20parser%20error%20due%20to%20singlequotes.PNG)
 
@@ -93,6 +93,8 @@ We can fix that in the settings.
 ![Change the parser settings to allow singlequotes and comments](/docs/json%20parser%20settings%20allow%20singlequotes%20and%20comments.PNG)
 
 As you can see, you can also make the parser settings *stricter* than the default so that they don't accept the nonstandard NaN and Infinity. Just set `allow_nan_inf` to False.
+
+*NOTE: Python-style comments are first supported in version [4.12.0](/CHANGELOG.md#4120---2023-03-28), while JavaScript comments have always been supported.*
 
 ## Viewing syntax errors in JSON ##
 
@@ -142,7 +144,7 @@ First, you can open a new buffer containing the query result.
 
 *Added in version 3.7.0*
 
-If you want to perform some simple search or find-and-replace operations on JSON without worrying about RemesPath syntax, you can use the find/replace form.
+If you want to perform some simple search or find-and-replace operations on JSON without worrying about [RemesPath](/docs/RemesPath.md) syntax, you can use the find/replace form.
 
 ![Find/replace form simple find](/docs/find%20replace%20form%20simple%20find.PNG)
 
@@ -156,9 +158,11 @@ The default behavior of the form is to do a regular expression search on both ke
 
 ![Find/replace form math replace](/docs/find%20replace%20form%20math%20replace.PNG)
 
-If you don't do a regular expression search, your search term must match keys/values *exactly*. Substring matching of non-regular-expressions is *not* currently supported.
+Prior to version [4.11.0](/CHANGELOG.md#4110---2023-03-15), if you didn't do a regular expression search, your search term must match keys/values *exactly*. Substring matching of non-regular-expressions was *not* supported.
 
-![Find/replace form non-regex search must match exactly](/docs/find%20replace%20form%20nonregex%20exact.PNG)
+Starting in version [4.11.0](/CHANGELOG.md#4110---2023-03-15), non-regular-expression searching does not require strings to match exactly. Thus, you can now match the `"MOO"` in the array `["MOO", "ZOO"]` with the search term `M` with regular expressions turned off.
+
+![Find/replace form non-regex search must match exactly before v4.11.0](/docs/find%20replace%20form%20nonregex%20exact.PNG)
 
 The form has limited functionality. For example, you can't perform a search on keys and a replacement on values. However, the form generates RemesPath queries in the RemesPath query box in the tree viewer, so you can use those queries as a starting point.
 
@@ -347,7 +351,7 @@ The tool looks like this:
 
 ## Sending REST API requests ##
 
-Perhaps the most useful attribute of this tool is its ability to connect to APIs and extract useful data without the user needing to write a script. Just enter one URL per line in the box on the left.
+Perhaps the most useful attribute of this tool is its ability to connect to APIs and extract useful data without the user needing to write a script. Just enter one URL per line in the box on the left. *Added in version [4.11.2](/CHANGELOG.md#4112---2023-03-21): URLs can also be entered as a JSON array.*
 
 **WARNING!!!** Before sending API requests, make sure you understand the correct way to format the URL, what type of JSON you expect to be getting, etc. *This tool has not been tested on private APIs*, so you should expect it to fail unless you can incorporate your API key and other authentication information into the URL.
 
@@ -393,12 +397,18 @@ Click the `View errors` button to see if any errors happened. If any did, a new 
 
 As of version *4.6.0*, the plugin can validate JSON against a [JSON schema](https://json-schema.org/). If the schema is valid, a message box will tell you if your JSON validates. If it doesn't validate, the plugin will tell you the first location where validation failed.
 
+As of version [4.11.2](/CHANGELOG.md#4112---2023-03-21), the recursion limit for validation is currently 64. Deeper JSON than that can't be validated, period. Very deep or recursive schemas will still compile.
+
 This tool can only validate the following keywords:
 
 ### Keywords for all JSON
 * type
 * [anyOf](https://json-schema.org/draft/2020-12/json-schema-core.html#name-anyof)
 * [enum](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-enum)
+* [`definitions`, `$defs`, and `$ref`](https://json-schema.org/draft/2020-12/json-schema-core.html#name-schema-re-use-with-defs)
+    * __Notes:__
+    * support added in version [4.11.2](/CHANGELOG.md#4112---2023-03-21)
+    * `definitions` and `$defs` keywords are equivalent.
 
 ### Keywords for objects
 * [properties](https://json-schema.org/draft/2020-12/json-schema-core.html#name-properties)
@@ -409,6 +419,14 @@ This tool can only validate the following keywords:
 * [items](https://json-schema.org/draft/2020-12/json-schema-core.html#name-items)
 * [minItems](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-minitems)
 * [maxItems](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-maxitems)
+
+### Keywords for strings
+
+* [pattern](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-pattern) (*support added in version [4.11.2](/CHANGELOG.md#4112---2023-03-21)*)
+
+
+### Keywords for numbers
+* [minimum](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-minimum) and [maximum](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-maximum) (*Both added in version [4.12.0](/CHANGELOG.md#4120---2023-03-28)*)
 
 ![Example of successful JSON schema validation](/docs/json%20schema%20validation%20succeeded.PNG)
 
@@ -422,11 +440,31 @@ The plugin can also generate random JSON from a schema. The default minimum and 
 
 ![randomly generated JSON from a schema](/docs/random%20json%20from%20schema.PNG)
 
-In addition to the keywords supported for JSON schema [validation](#validating-json-against-json-schema), the following keywords are supported for random generation of *arrays*:
+The following keywords are supported for random JSON generation:
+
+### Keywords for all JSON
+* type
+* [anyOf](https://json-schema.org/draft/2020-12/json-schema-core.html#name-anyof)
+* [enum](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-enum)
+* [`definitions`, `$defs`, and `$ref`](https://json-schema.org/draft/2020-12/json-schema-core.html#name-schema-re-use-with-defs)
+    * __Notes:__
+    * support added in version [4.11.2](/CHANGELOG.md#4112---2023-03-21)
+    * `definitions` and `$defs` keywords are equivalent.
+
+### Keywords for objects
+* [properties](https://json-schema.org/draft/2020-12/json-schema-core.html#name-properties)
+* [required](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-required)
+
+### Keywords for arrays
+* [items](https://json-schema.org/draft/2020-12/json-schema-core.html#name-items)
+* [minItems](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-minitems)
+* [maxItems](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-maxitems)
 * [contains](https://json-schema.org/draft/2020-12/json-schema-core.html#name-contains)
 * [minContains](https://json-schema.org/draft/2020-12/json-schema-core.html#name-contains)
 * [maxContains](https://json-schema.org/draft/2020-12/json-schema-core.html#name-contains)
 
+### Keywords for numbers
+* [minimum](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-minimum) and [maximum](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-maximum) (*Both added in version [4.12.0](/CHANGELOG.md#4120---2023-03-28)*)
 
 ## Generating JSON schema from JSON ##
 
@@ -448,10 +486,36 @@ This JSON schema generator only produces schemas with the following keywords:
 
 ![JSON schema generator](/docs/json%20viewer%20schema%20generator.PNG)
 
+## Automatic validation of JSON against JSON schema ##
+
+As of version [4.11.0](/CHANGELOG.md#4110---2023-03-15), you can set up this plugin to *automatically validate* JSON files with certain filenames whenever you open them. (*starting in version [4.11.2](/CHANGELOG.md#4112---2023-03-21), auto-validation also occurs when files are saved or renamed*)
+
+Let's try out this feature! We can use the plugin command `Choose schemas to automatically validate filename patterns`, which will open up a file that looks like this.
+
+![schemas to filename patterns file new](/docs/schemasToFnamePatterns%20with%20no%20fname%20patterns.PNG)
+
+Read the comments at the beginning of this file; it's self-documenting.
+
+Now let's map a schema file to a filename pattern.
+
+![schemas to filename patterns file successful validation](/docs/schemasToFnamePatterns%20example%20schema%20to%20example%20fname%20success.PNG)
+
+This configuration means that whenever I open a `.json` file with the substring `example` in its name (other than `example_schema.json` itself), the file will automatically be validated against `example_schema.json` (shown in the left of the bottom instance). We see in the right tab in the bottom instance that `example.json` does not have a pop-up message, because it validates against that schema.
+
+Below we can see an example of what happens when a file with a name that matches the pattern *does not validate* under the schema. We get a pop-up message indicating that the schema expected this JSON to be an array, but the JSON in this file is an object.
+
+![schemas to filenames patterns file failed validation](/docs/schemasToFnamePatterns%20example%20schema%20to%20example%20fname%20failure.PNG)
+
+*Note*: the first release where this feature was implemented without causing potential crashes at startup is [4.11.1](/CHANGELOG.md#4111---2023-03-17).
+
 ## DSON ##
 
 JSON is not sufficiently [Doge-friendly](https://dogeon.xyz/index.html). This plugin aims to help correct that.
 
-Currently the plugin only has a DSON emitter. Later I will add a DSON parser.
+Currently the plugin only has a DSON emitter. Later I may add a DSON parser.
 
 ![DSON example](/docs/DSON%20example.PNG)
+
+Where is DSON generator? Don't know. Not on main plugin menu. So scared. Very confuse. 🐕🤷
+
+DSON is first found in version [4.10.1](/CHANGELOG.md#4101---2023-03-02). molsonkiko such dedicated, much commitment to users, wow.

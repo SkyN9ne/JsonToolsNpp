@@ -1,5 +1,5 @@
 # Change Log
-All [notable changes](#4101---2023-03-02) to this project will be documented in this file.
+All [notable changes](#4120---2023-03-28) to this project will be documented in this file.
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
@@ -8,14 +8,25 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
  
 ### To Be Added
 
-1. Show multiple schema validation problems. 
-2. Add a thing that maps schema filenames to filename patterns, so that files with certain name patterns are automatically validated a la VSCode.
+1. Show multiple schema validation problems.
+2. Add configurable startup actions for grepper form. Might look like
+```json
+// grepperFormStartupActions.json
+{
+    "query": "@.*[:]{foo: @.foo, len_bar: s_len(@.bar)}", // for each URL queried, get a JSON array, from which you select the foo attribute and the length of the bar attribute of each item
+    "urls": [
+        "https://foo.gov.api?user=bar",
+        "https://foo.gov.api?user=baz",
+    ]
+}
+```
 3. Add parsing of unquoted strings when linter is active.
 	(would this cause too much of a performance hit?)
  
 ### To Be Changed
 
 - Make it so that RemesPath assignment queries like `@.foo = @ + 1` only change the parts of the tree viewer that were affected by the assignment. Would greatly reduce latency because that's the slowest operation.
+- If there's a validation error inside of an `anyOf` list of schemas (i.e. JSON doesn't validate under *any* of the schemas), the error message is rather uninformative, and says only "the JSON didn't validate under any of the schemas", but not *why* it didn't validate.
 
 ### To Be Fixed
 
@@ -30,6 +41,61 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - When a tree viewer is refreshed using JSON from a file with a different name, the title of the docking form that the user sees doesn't change to reflect the new file. For example, a tree viewer is opened up for `foo.json` and then refreshed with a buffer named `bar.json`, and the title of the docking form still reads `Json Tree View for foo.json`.
 	- This is also true if a file with a tree viewer is renamed, e.g., the file `foo.json` is renamed to `bar.json`, but the tree viewer still says `Json Tree View for foo.json`.
 - Linter doesn't work on *empty* arrays or objects with no close bracket (e.g., `[1` is parsed as `[1]` but `[` raises an error)
+
+## [4.12.0] - 2023-03-28
+
+### Added
+
+1. Support for `$defs`, `definitions`, and `$ref` keywords for random JSON generation.
+2. When JSON parsing fails, jump to the position where the parsing stopped.
+3. Python-style `#` comments now supported with the `allow_comments` setting turned on.
+4. Option to turn off images on tree viewer.
+5. Non-empty arrays and objects now have `[length]` and `{length}` indicators of their lengths.
+6. Support for `contains`, `minContains`, and `maxContains` keywords in JSON Schema *validation* of arrays.
+7. Support for `minimum` and `maximum` keywords in JSON Schema validation *and* random generation.
+
+### Changed
+
+1. `allow_javascript_comments` setting name changed to `allow_comments` because Python-style `#` comments are now supported.
+
+### Fixed
+
+1. Removed stupid dinging sounds when using control keys (tab, space, enter, escape) while in the tree view. Address [issues #11](https://github.com/molsonkiko/JsonToolsNppPlugin/issues/11) and [#10](https://github.com/molsonkiko/JsonToolsNppPlugin/issues/10)
+2. Making several UI elements on various forms slightly larger and adding auto-sizing where possible, hopefully addressing [issue #12](https://github.com/molsonkiko/JsonToolsNppPlugin/issues/12).
+
+## [4.11.2] - 2023-03-21
+
+### Added
+
+1. Added support for [pattern JSON Schema keyword](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-pattern), allowing validation of strings against a regular expression. 
+2. Added support for ["definitions", "$defs", and "$ref" JSON Schema keywords](https://json-schema.org/draft/2020-12/json-schema-core.html#name-schema-re-use-with-defs), allowing schema re-use and even validation of recursive self-referential schemas.
+3. If auto-validation has been configured, it will now occur whenever a file is saved or renamed as well as when it is opened.
+4. JSON schema validation is significantly faster due to optimizations, pre-compilation of schemas into validation functions, and caching of schemas to avoid unnecessary reads from disk.
+5. Improvements to the `JSON from files and APIs` form (address [#32](https://github.com/molsonkiko/JsonToolsNppPlugin/issues/32)):
+	- URLs can now be entered into the URLs box as a JSON array or one per line as before. This could be helpful if there is a simple pattern in how the URLs are constructed and you want to use e.g. Remespath to build a list of URLs.
+	- The last 10 URLs searched are now remembered, and the URLs box is populated with them at startup.
+
+## [4.11.1] - 2023-03-17
+
+### Fixed
+
+1. [Bug](https://github.com/molsonkiko/JsonToolsNppPlugin/issues/30) where users who didn't have a JsonTools directory in the config folder would get a plugin crash on startup. Now a config subdirectory is automatically created if it doesn't already exist. This bug also existed with the `JSON from files and APIs` form, but now it has been solved in both places.
+
+## [4.11.0] - 2023-03-15
+
+### Fixed
+
+1. Removed auto-installation of DSON UDL for Notepad++ older than `8.0`, because the UDL doesn't work anyway and the installation process causes an error message.
+
+### Changed
+
+1. [Find/replace form](/docs/README.md#find-and-replace-form) no longer requires a perfect match to the string to be found in order to perform a replacement when regular expressions are turned off. For example, find/replace searching for `M` and replacing with `Z` (regular expressions *off*) in the array `["MOO", "BOO"]` would previously have left the array unchanged, but now will change it into `["ZOO", "BOO"]`.
+2. [DSON](/docs/README.md#dson) is now sneakily hidden!
+
+### Added
+
+1. [Auto-validation of JSON files against JSON schema](/docs/README.md#automatic-validation-of-json-against-json-schema).
+2. To accommodate people who still want exact matching without having to write a regular expression, a `Match exactly?` checkbox has been added to the find/replace form. This is disabled whenever the `regular expression` box is checked, and vice versa.
 
 ## [4.10.1] - 2023-03-02
 
