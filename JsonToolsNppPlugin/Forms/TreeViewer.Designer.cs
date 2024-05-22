@@ -13,11 +13,20 @@
         /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
         protected override void Dispose(bool disposing)
         {
+            if (pathsToJNodes != null)
+                pathsToJNodes.Clear();
             json = null;
+            queryResult = null;
+            pathsToJNodes = null;
             if (findReplaceForm != null && !findReplaceForm.IsDisposed)
+            {
                 findReplaceForm.Close();
+                findReplaceForm.Dispose();
+                findReplaceForm = null;
+            }
             if (disposing && (components != null))
             {
+                NppFormHelper.UnregisterFormIfModeless(this, false);
                 components.Dispose();
             }
             base.Dispose(disposing);
@@ -39,7 +48,6 @@
             this.SubmitQueryButton = new System.Windows.Forms.Button();
             this.SaveQueryButton = new System.Windows.Forms.Button();
             this.QueryToCsvButton = new System.Windows.Forms.Button();
-            this.FullTreeCheckBox = new System.Windows.Forms.CheckBox();
             this.NodeRightClickMenu = new System.Windows.Forms.ContextMenuStrip(this.components);
             this.CopyValueMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.CopyKeyItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -51,9 +59,13 @@
             this.PythonStylePathItem = new System.Windows.Forms.ToolStripMenuItem();
             this.RemesPathStylePathItem = new System.Windows.Forms.ToolStripMenuItem();
             this.ToggleSubtreesItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.SelectThisItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.OpenSortFormItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.SelectAllChildrenItem = new System.Windows.Forms.ToolStripMenuItem();
             this.CurrentPathBox = new System.Windows.Forms.TextBox();
             this.RefreshButton = new System.Windows.Forms.Button();
             this.FindReplaceButton = new System.Windows.Forms.Button();
+            this.DocumentTypeComboBox = new System.Windows.Forms.ComboBox();
             this.NodeRightClickMenu.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -62,10 +74,10 @@
             this.Tree.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
             | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
-            this.Tree.Location = new System.Drawing.Point(4, 95);
+            this.Tree.Location = new System.Drawing.Point(4, 99);
             this.Tree.Name = "Tree";
-            this.Tree.Size = new System.Drawing.Size(457, 335);
-            this.Tree.TabIndex = 6;
+            this.Tree.Size = new System.Drawing.Size(457, 331);
+            this.Tree.TabIndex = 7;
             this.Tree.BeforeExpand += new System.Windows.Forms.TreeViewCancelEventHandler(this.Tree_BeforeExpand);
             this.Tree.AfterSelect += new System.Windows.Forms.TreeViewEventHandler(this.Tree_AfterSelect);
             this.Tree.NodeMouseClick += new System.Windows.Forms.TreeNodeMouseClickEventHandler(this.Tree_NodeMouseClick);
@@ -93,7 +105,7 @@
             this.QueryBox.Location = new System.Drawing.Point(4, 4);
             this.QueryBox.Multiline = true;
             this.QueryBox.Name = "QueryBox";
-            this.QueryBox.Size = new System.Drawing.Size(203, 74);
+            this.QueryBox.Size = new System.Drawing.Size(203, 89);
             this.QueryBox.TabIndex = 0;
             this.QueryBox.Text = "@";
             this.QueryBox.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.QueryBox_KeyPress);
@@ -139,19 +151,6 @@
             this.QueryToCsvButton.Click += new System.EventHandler(this.QueryToCsvButton_Click);
             this.QueryToCsvButton.KeyUp += new System.Windows.Forms.KeyEventHandler(this.TreeViewer_KeyUp);
             // 
-            // FullTreeCheckBox
-            // 
-            this.FullTreeCheckBox.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.FullTreeCheckBox.AutoSize = true;
-            this.FullTreeCheckBox.Location = new System.Drawing.Point(222, 69);
-            this.FullTreeCheckBox.Name = "FullTreeCheckBox";
-            this.FullTreeCheckBox.Size = new System.Drawing.Size(130, 20);
-            this.FullTreeCheckBox.TabIndex = 5;
-            this.FullTreeCheckBox.Text = "View all subtrees";
-            this.FullTreeCheckBox.UseVisualStyleBackColor = true;
-            this.FullTreeCheckBox.CheckedChanged += new System.EventHandler(this.FullTreeCheckBox_CheckedChanged);
-            this.FullTreeCheckBox.KeyUp += new System.Windows.Forms.KeyEventHandler(this.TreeViewer_KeyUp);
-            // 
             // NodeRightClickMenu
             // 
             this.NodeRightClickMenu.ImageScalingSize = new System.Drawing.Size(20, 20);
@@ -159,9 +158,12 @@
             this.CopyValueMenuItem,
             this.CopyKeyItem,
             this.CopyPathItem,
-            this.ToggleSubtreesItem});
+            this.ToggleSubtreesItem,
+            this.SelectThisItem,
+            this.OpenSortFormItem,
+            this.SelectAllChildrenItem});
             this.NodeRightClickMenu.Name = "NodeRightClickMenu";
-            this.NodeRightClickMenu.Size = new System.Drawing.Size(268, 100);
+            this.NodeRightClickMenu.Size = new System.Drawing.Size(268, 172);
             // 
             // CopyValueMenuItem
             // 
@@ -231,6 +233,26 @@
             this.ToggleSubtreesItem.Size = new System.Drawing.Size(267, 24);
             this.ToggleSubtreesItem.Text = "Expand/collapse all subtrees";
             // 
+            // SelectThisItem
+            // 
+            this.SelectThisItem.Name = "SelectThisItem";
+            this.SelectThisItem.Size = new System.Drawing.Size(267, 24);
+            this.SelectThisItem.Text = "Select this";
+            // 
+            // OpenSortFormItem
+            // 
+            this.OpenSortFormItem.Name = "OpenSortFormItem";
+            this.OpenSortFormItem.Size = new System.Drawing.Size(267, 24);
+            this.OpenSortFormItem.Text = "Sort array...";
+            this.OpenSortFormItem.Visible = false;
+            // 
+            // SelectAllChildrenItem
+            // 
+            this.SelectAllChildrenItem.Name = "SelectAllChildrenItem";
+            this.SelectAllChildrenItem.Size = new System.Drawing.Size(267, 24);
+            this.SelectAllChildrenItem.Text = "Select all children";
+            this.SelectAllChildrenItem.Visible = false;
+            // 
             // CurrentPathBox
             // 
             this.CurrentPathBox.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left) 
@@ -239,7 +261,7 @@
             this.CurrentPathBox.Name = "CurrentPathBox";
             this.CurrentPathBox.ReadOnly = true;
             this.CurrentPathBox.Size = new System.Drawing.Size(337, 22);
-            this.CurrentPathBox.TabIndex = 8;
+            this.CurrentPathBox.TabIndex = 10;
             this.CurrentPathBox.TabStop = false;
             // 
             // RefreshButton
@@ -261,26 +283,44 @@
             this.FindReplaceButton.Location = new System.Drawing.Point(4, 435);
             this.FindReplaceButton.Name = "FindReplaceButton";
             this.FindReplaceButton.Size = new System.Drawing.Size(114, 23);
-            this.FindReplaceButton.TabIndex = 7;
+            this.FindReplaceButton.TabIndex = 9;
             this.FindReplaceButton.Text = "Find/replace";
             this.FindReplaceButton.UseVisualStyleBackColor = true;
             this.FindReplaceButton.Click += new System.EventHandler(this.FindReplaceButton_Click);
             this.FindReplaceButton.KeyUp += new System.Windows.Forms.KeyEventHandler(this.TreeViewer_KeyUp);
+            // 
+            // DocumentTypeComboBox
+            // 
+            this.DocumentTypeComboBox.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.DocumentTypeComboBox.AutoCompleteMode = System.Windows.Forms.AutoCompleteMode.SuggestAppend;
+            this.DocumentTypeComboBox.FormattingEnabled = true;
+            this.DocumentTypeComboBox.Items.AddRange(new object[] {
+            "JSON mode",
+            "JSONL mode",
+            "INI mode",
+            "REGEX mode"});
+            this.DocumentTypeComboBox.Location = new System.Drawing.Point(220, 69);
+            this.DocumentTypeComboBox.Name = "DocumentTypeComboBox";
+            this.DocumentTypeComboBox.Size = new System.Drawing.Size(130, 24);
+            this.DocumentTypeComboBox.TabIndex = 6;
+            this.DocumentTypeComboBox.SelectedIndexChanged += new System.EventHandler(this.DocumentTypeComboBox_SelectedIndexChanged);
+            this.DocumentTypeComboBox.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.QueryBox_KeyPress);
+            this.DocumentTypeComboBox.KeyUp += new System.Windows.Forms.KeyEventHandler(this.TreeViewer_KeyUp);
             // 
             // TreeViewer
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(471, 461);
-            this.Controls.Add(this.FindReplaceButton);
-            this.Controls.Add(this.RefreshButton);
-            this.Controls.Add(this.CurrentPathBox);
-            this.Controls.Add(this.FullTreeCheckBox);
+            this.Controls.Add(this.QueryBox);
+            this.Controls.Add(this.SubmitQueryButton);
             this.Controls.Add(this.QueryToCsvButton);
             this.Controls.Add(this.SaveQueryButton);
-            this.Controls.Add(this.SubmitQueryButton);
-            this.Controls.Add(this.QueryBox);
+            this.Controls.Add(this.RefreshButton);
+            this.Controls.Add(this.DocumentTypeComboBox);
             this.Controls.Add(this.Tree);
+            this.Controls.Add(this.FindReplaceButton);
+            this.Controls.Add(this.CurrentPathBox);
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Name = "TreeViewer";
             this.Text = "TreeViewer";
@@ -296,7 +336,6 @@
         private System.Windows.Forms.ImageList TypeIconList;
         private System.Windows.Forms.Button SaveQueryButton;
         private System.Windows.Forms.Button QueryToCsvButton;
-        private System.Windows.Forms.CheckBox FullTreeCheckBox;
         private System.Windows.Forms.ContextMenuStrip NodeRightClickMenu;
         private System.Windows.Forms.ToolStripMenuItem CopyValueMenuItem;
         private System.Windows.Forms.ToolStripMenuItem CopyKeyItem;
@@ -309,10 +348,14 @@
         private System.Windows.Forms.ToolStripMenuItem RemesPathStylePathItem;
         private System.Windows.Forms.TextBox CurrentPathBox;
         private System.Windows.Forms.ToolStripMenuItem ToggleSubtreesItem;
-        private System.Windows.Forms.Button RefreshButton;
         internal System.Windows.Forms.TextBox QueryBox;
         private System.Windows.Forms.Button FindReplaceButton;
         internal System.Windows.Forms.TreeView Tree;
         internal System.Windows.Forms.Button SubmitQueryButton;
+        internal System.Windows.Forms.Button RefreshButton;
+        private System.Windows.Forms.ToolStripMenuItem OpenSortFormItem;
+        private System.Windows.Forms.ToolStripMenuItem SelectThisItem;
+        private System.Windows.Forms.ToolStripMenuItem SelectAllChildrenItem;
+        private System.Windows.Forms.ComboBox DocumentTypeComboBox;
     }
 }

@@ -6,9 +6,7 @@ Uses an algorithm to flatten nested JSON.
 */
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
-using JSON_Tools.Utils;
 
 namespace JSON_Tools.JSON_Tools
 {
@@ -126,23 +124,23 @@ namespace JSON_Tools.JSON_Tools
 	public class JsonTabularizer
 	{
 		public JsonTabularizerStrategy strategy { get; set; }
-		private JsonFormat _output_format = JsonFormat.REC;
-		public JsonFormat output_format
+		private JsonFormat _outputFormat = JsonFormat.REC;
+		public JsonFormat outputFormat
 		{
-			get { return _output_format; }
+			get { return _outputFormat; }
 			set
 			{
-				if ((value & JsonFormat.ANY_TABLE) != 0) _output_format = value;
+				if ((value & JsonFormat.ANY_TABLE) != 0) _outputFormat = value;
 				else throw new ArgumentException("The output format of the JsonTabularizer must be one of REC, SQR, or TAB");
 			}
 		}
 
 		public JsonTabularizer(JsonTabularizerStrategy strategy = JsonTabularizerStrategy.DEFAULT) // ,
-							// JsonFormat output_format = JsonFormat.REC)
-							// don't worry about output_format, because other output formats aren't supported
+							// JsonFormat outputFormat = JsonFormat.REC)
+							// don't worry about outputFormat, because other output formats aren't supported
 		{
 			this.strategy = strategy;
-			//if ((output_format & JsonFormat.ANY_TABLE) != 0) _output_format = output_format;
+			//if ((outputFormat & JsonFormat.ANY_TABLE) != 0) _outputFormat = outputFormat;
 			//else throw new ArgumentException("The output format of the JsonTabularizer must be one of REC, SQR, or TAB");
 		}
 
@@ -166,40 +164,40 @@ namespace JSON_Tools.JSON_Tools
 			{
 				// it's tabular if it contains only arrays of scalars
 				// or only objects where all values are scalar
-				if (!schema.TryGetValue("items", out object items_obj))
+				if (!schema.TryGetValue("items", out object itemsObj))
 					return JsonFormat.ROW; // an empty array is a row
-				var items = (Dictionary<string, object>)items_obj;
-				bool item_has_type = items.TryGetValue("type", out object item_types);
-				if (!item_has_type)
+				var items = (Dictionary<string, object>)itemsObj;
+				bool itemHasType = items.TryGetValue("type", out object itemTypes);
+				if (!itemHasType)
 				{
 					// this is because it's an "anyOf" type, where it can have some non-scalars and some scalars as values.
 					// we can't tabularize it so we call it "bad"
 					return JsonFormat.BAD;
 				}
-				Dtype item_dtype = (Dtype)item_types;
-				if ((item_dtype & Dtype.SCALAR) != 0)
+				Dtype itemDtype = (Dtype)itemTypes;
+				if ((itemDtype & Dtype.SCALAR) != 0)
 				{
 					// it's an array where all elements have the same (scalar) type
 					return JsonFormat.ROW;
 				}
-				if (item_dtype == Dtype.ARR)
+				if (itemDtype == Dtype.ARR)
 				{
 					// it's an array of arrays
-					if (!items.TryGetValue("items", out object subitems_obj))
+					if (!items.TryGetValue("items", out object subitemsObj))
 					{
 						// an array containing only empty arrays would be a table
 						// with no columns, so this is BAD
 						return JsonFormat.BAD;
 					}
-					Dictionary<string, object> subitems = (Dictionary<string, object>)subitems_obj;
-					bool subarr_has_type = subitems.TryGetValue("type", out object subarr_types);
-					if (!subarr_has_type)
+					Dictionary<string, object> subitems = (Dictionary<string, object>)subitemsObj;
+					bool subarrHasType = subitems.TryGetValue("type", out object subarrTypes);
+					if (!subarrHasType)
 					{
 						// this is an array containing a mix of scalars and
 						// non-scalars; BAD!
 						return JsonFormat.BAD;
 					}
-					if (((Dtype)subarr_types & Dtype.ITERABLE) == 0)
+					if (((Dtype)subarrTypes & Dtype.ITERABLE) == 0)
 					{
 						// an array of arrays of homogeneous scalars (e.g., [[1, 2], [3, 4]])
 						return JsonFormat.SQR;
@@ -211,8 +209,8 @@ namespace JSON_Tools.JSON_Tools
 				foreach (object prop in subprops.Values)
 				{
 					var dprop = (Dictionary<string, object>)prop;
-					bool has_subtipe = dprop.TryGetValue("type", out object subtipe);
-					if (!has_subtipe)
+					bool hasSubtipe = dprop.TryGetValue("type", out object subtipe);
+					if (!hasSubtipe)
 					{
 						return JsonFormat.BAD; // it's a dict with a mixture of non-scalar types - bad! 
 					}
@@ -235,9 +233,9 @@ namespace JSON_Tools.JSON_Tools
 			foreach (object prop in props.Values)
 			{
 				var dprop = (Dictionary<string, object>)prop;
-				bool has_subtipe = dprop.TryGetValue("type", out object subtipe_obj);
-				var subtipe = (Dtype)subtipe_obj;
-				if (!has_subtipe)
+				bool hasSubtipe = dprop.TryGetValue("type", out object subtipeObj);
+				var subtipe = (Dtype)subtipeObj;
+				if (!hasSubtipe)
 				{
 					return JsonFormat.BAD; // it's a dict with a mixture of non-scalar types - bad! 
 				}
@@ -247,8 +245,8 @@ namespace JSON_Tools.JSON_Tools
 					foreach (object subprop in subprops.Values)
 					{
 						Dictionary<string, object> dsubprop = (Dictionary<string, object>)subprop;
-						bool subprop_has_type = dsubprop.TryGetValue("type", out object subproptipe);
-						if (!subprop_has_type)
+						bool subpropHasType = dsubprop.TryGetValue("type", out object subproptipe);
+						if (!subpropHasType)
 						{
 							// this key of the dictionary has a mixture of nonscalar types
 							return JsonFormat.BAD;
@@ -274,10 +272,10 @@ namespace JSON_Tools.JSON_Tools
 					// This is fine.
 					continue;
 				}
-				bool subarr_has_type = ((Dictionary<string, object>)subitems).TryGetValue("type", out object subarr_tipe);
-				if (!subarr_has_type)
+				bool subarrHasType = ((Dictionary<string, object>)subitems).TryGetValue("type", out object subarrTipe);
+				if (!subarrHasType)
 					return JsonFormat.BAD;
-				if (((Dtype)subarr_tipe & Dtype.ARR_OR_OBJ) != 0)
+				if (((Dtype)subarrTipe & Dtype.ARR_OR_OBJ) != 0)
 				{
 					// it's an array containing some non-scalars
 					return JsonFormat.BAD;
@@ -294,7 +292,7 @@ namespace JSON_Tools.JSON_Tools
 		}
 
 
-		private void FindTabsInSchemaHelper(Dictionary<string, object> schema, List<object> path, Dictionary<string, JsonFormat> tab_paths)
+		private void FindTabsInSchemaHelper(Dictionary<string, object> schema, List<object> path, Dictionary<string, JsonFormat> tabPaths)
 		{
 			JsonFormat cls = ClassifySchema(schema);
 			if (cls == JsonFormat.SCAL || cls == JsonFormat.ROW)
@@ -316,7 +314,7 @@ namespace JSON_Tools.JSON_Tools
 						patharr.children.Add(new JNode((string)node, Dtype.STR, 0));
 					}
 				}
-				tab_paths[patharr.ToString()] = cls;
+				tabPaths[patharr.ToString()] = cls;
 				return;
 			}
 			// by process of elimination, it's bad, but maybe it contains tables
@@ -324,9 +322,9 @@ namespace JSON_Tools.JSON_Tools
 			if (tipe == Dtype.ARR)
 			{
 				// it's an array; we'll search recursively at each index for tables
-				if (!schema.TryGetValue("items", out object items_obj))
+				if (!schema.TryGetValue("items", out object itemsObj))
 					return; // no "items" keyword only happens for empty arrays
-				var items = (Dictionary<string, object>)items_obj;
+				var items = (Dictionary<string, object>)itemsObj;
 				List<object> newpath = new List<object>(path);
 				// use 0 as a placeholder for all indices in arrays
 				// the important thing is that it's not a string
@@ -336,12 +334,12 @@ namespace JSON_Tools.JSON_Tools
 					List<object> danyof = (List<object>)anyof;
 					foreach (object subschema in danyof)
 					{
-						FindTabsInSchemaHelper((Dictionary<string, object>)subschema, newpath, tab_paths);
+						FindTabsInSchemaHelper((Dictionary<string, object>)subschema, newpath, tabPaths);
 					}
 				}
 				else
 				{
-					FindTabsInSchemaHelper(items, newpath, tab_paths);
+					FindTabsInSchemaHelper(items, newpath, tabPaths);
 				}
 				return;
 			}
@@ -349,87 +347,79 @@ namespace JSON_Tools.JSON_Tools
 			var props = (Dictionary<string, object>)schema["properties"];
 			foreach (string k in props.Keys)
 			{
-				List<object> newpath = new List<object>(path);
-				newpath.Add(k);
-				FindTabsInSchemaHelper((Dictionary<string, object>)props[k], newpath, tab_paths);
+				List<object> newpath = new List<object>(path) { k };
+				FindTabsInSchemaHelper((Dictionary<string, object>)props[k], newpath, tabPaths);
 			}
 		}
 
 		public Dictionary<string, JsonFormat> FindTabsInSchema(Dictionary<string, object> schema)
 		{
-			var tab_paths = new Dictionary<string, JsonFormat>();
-			FindTabsInSchemaHelper(schema, new List<object>(), tab_paths);
-			return tab_paths;
+			var tabPaths = new Dictionary<string, JsonFormat>();
+			FindTabsInSchemaHelper(schema, new List<object>(), tabPaths);
+			return tabPaths;
 		}
 
 		/// <summary>
-		/// hanging_row: a dict where some values are scalars and others are
+		/// hangingRow: a dict where some values are scalars and others are
 		/// dicts with only scalar values.
 		/// Returns: a new dict where the off-hanging dict at key k has been merged into
-		/// the original by adding &lt;k&gt;&lt;key_sep&gt;&lt;key in hanger&gt; = &lt;val in hanger&gt;
+		/// the original by adding &lt;k&gt;&lt;keySep&gt;&lt;key in hanger&gt; = &lt;val in hanger&gt;
 		/// for each key, val in hanger.
 		/// </summary>
-		/// <param name="hanging_row"></param>
-		/// <param name="key_sep"></param>
+		/// <param name="hangingRow"></param>
+		/// <param name="keySep"></param>
 		/// <returns></returns>
 		/// <exception cref="ArgumentException"></exception>
-		private Dictionary<string, JNode> ResolveHang(Dictionary<string, JNode> hanging_row, string key_sep = ".")
+		private Dictionary<string, JNode> ResolveHang(Dictionary<string, JNode> hangingRow, string keySep = ".")
 		{
 			var result = new Dictionary<string, JNode>();
-			foreach (string k in hanging_row.Keys)
+			foreach (KeyValuePair<string, JNode> kv in hangingRow)
 			{
-				JNode v = hanging_row[k];
-				if (v is JObject)
+				if (kv.Value is JObject dv)
 				{
-					var dv = (JObject)v;
-					foreach (string subk in dv.children.Keys)
+					foreach (KeyValuePair<string, JNode> subkv in dv.children)
 					{
-						JNode subv = dv[subk];
-						string new_key = $"{k}{key_sep}{subk}";
-						if (result.ContainsKey(new_key))
+						string newKey = $"{kv.Key}{keySep}{subkv.Key}";
+						if (result.ContainsKey(newKey))
 						{
-							throw new ArgumentException($"Attempted to create hanging row with synthetic key {new_key}, but {new_key} was already a key in {hanging_row}");
+							throw new ArgumentException($"Attempted to create hanging row with synthetic key {newKey}, but {newKey} was already a key in {hangingRow}");
 						}
-						result[new_key] = subv;
+						result[newKey] = subkv.Value;
 					}
 				}
 				else
 				{
-					result[k] = v;
+					result[kv.Key] = kv.Value;
 				}
 			}
 			return result;
 		}
 
-		private string FormatKey(string key, string super_key, string key_sep = ".")
+		private string FormatKey(string key, string superKey, string keySep = ".")
 		{
-			return super_key.Length == 0 ? key : $"{super_key}{key_sep}{key}";
+			return superKey.Length == 0 ? key : $"{superKey}{keySep}{key}";
 		}
 
 		private void AnyTableToRecord(JNode obj,
 									   JsonFormat cls,
-									   Dictionary<string, JNode> rest_of_row,
+									   Dictionary<string, JNode> restOfRow,
 									   List<JNode> result,
-									   List<string> super_keylist,
-									   string key_sep)
+									   List<string> superKeylist,
+									   string keySep)
 		{
-			string super_key = string.Join(key_sep, super_keylist);
-			Func<string, string> keyformat = (string x) => FormatKey(x, super_key, key_sep);
+			string superKey = string.Join(keySep, superKeylist);
+			Func<string, string> keyformat = (string x) => FormatKey(x, superKey, keySep);
 			if (cls == JsonFormat.REC)
 			{
 				JArray aobj = (JArray)obj;
 				// arrays of flat objects - this is what we're aiming for
 				foreach (object rec in aobj.children)
 				{
-					Dictionary<string, JNode> newrec = new Dictionary<string, JNode>();
+					var newrec = new Dictionary<string, JNode>(restOfRow);
 					JObject orec = (JObject)rec;
-					foreach (string k in orec.children.Keys)
+					foreach (KeyValuePair<string, JNode> kv in orec.children)
 					{
-						newrec[keyformat(k)] = orec[k];
-					}
-					foreach (string k in rest_of_row.Keys)
-					{
-						newrec[k] = rest_of_row[k];
+						newrec[keyformat(kv.Key)] = kv.Value;
 					}
 					result.Add(new JObject(0, newrec));
 				}
@@ -439,45 +429,45 @@ namespace JSON_Tools.JSON_Tools
 				// a dict mapping some number of keys to scalars and the rest to arrays
 				// some keys may be mapped to hanging all-scalar dicts and not scalars
 				JObject oobj = (JObject)obj;
-				Dictionary<string, JArray> arr_dict = new Dictionary<string, JArray>();
-				Dictionary<string, JNode> not_arr_dict = new Dictionary<string, JNode>();
-				int len_arr = 0;
-				foreach (string k in oobj.children.Keys)
+				var arrDict = new Dictionary<string, JArray>();
+				var notArrDict = new Dictionary<string, JNode>();
+				int lenArr = 0;
+				foreach (KeyValuePair<string, JNode> kv in oobj.children)
 				{
-					JNode v = oobj[k];
-					if (v is JArray)
+					if (kv.Value is JArray varr)
 					{
-						JArray varr = (JArray)v;
-						arr_dict[k] = varr;
-						if (varr.Length > len_arr) { len_arr = varr.Length; }
+						arrDict[kv.Key] = varr;
+						if (varr.Length > lenArr) { lenArr = varr.Length; }
 					}
 					else
 					{
-						not_arr_dict[keyformat(k)] = v;
+						notArrDict[keyformat(kv.Key)] = kv.Value;
 					}
 				}
-				not_arr_dict = ResolveHang(not_arr_dict, key_sep);
-				if (len_arr == 0)
+				notArrDict = ResolveHang(notArrDict, keySep);
+				if (lenArr == 0)
                 {
 					// A 0-length array should be dealt with by adding a single row with an empty value
 					// for the array's parent key
-					foreach (string k in arr_dict.Keys)
-						not_arr_dict[k] = new JNode("", Dtype.STR, 0);
-					result.Add(new JObject(0, not_arr_dict));
+					foreach (string k in arrDict.Keys)
+						notArrDict[k] = new JNode("", Dtype.STR, 0);
+					result.Add(new JObject(0, notArrDict));
 					return;
                 }
-				for (int ii = 0; ii < len_arr; ii++)
+				for (int ii = 0; ii < lenArr; ii++)
 				{
-					Dictionary<string, JNode> newrec = new Dictionary<string, JNode>();
-					foreach (string k in arr_dict.Keys)
+					Dictionary<string, JNode> newrec = new Dictionary<string, JNode>(restOfRow);
+					foreach (string k in arrDict.Keys)
 					{
-						JArray v = arr_dict[k];
+						JArray v = arrDict[k];
 						// if one array is longer than others, the missing values from the short rows are filled by
 						// empty strings
 						newrec[keyformat(k)] = ii >= v.Length ? new JNode("", Dtype.STR, 0) : v[ii];
 					}
-					foreach (string k in not_arr_dict.Keys) { JNode v = not_arr_dict[k]; newrec[k] = v; }
-					foreach (string k in rest_of_row.Keys) { JNode v = rest_of_row[k]; newrec[k] = v; }
+					foreach (KeyValuePair<string, JNode> kv in notArrDict)
+					{
+						newrec[kv.Key] = kv.Value;
+					}
 					result.Add(new JObject(0, newrec));
 				}
 			}
@@ -487,11 +477,7 @@ namespace JSON_Tools.JSON_Tools
 				JArray aobj = (JArray)obj;
 				foreach (JNode arr in aobj.children)
 				{
-					Dictionary<string, JNode> newrec = new Dictionary<string, JNode>();
-					foreach (string k in rest_of_row.Keys)
-					{
-						newrec[k] = rest_of_row[k];
-					}
+					var newrec = new Dictionary<string, JNode>(restOfRow);
 					List<JNode> children = ((JArray)arr).children;
 					for (int ii = 0; ii < children.Count; ii++)
 					{
@@ -509,128 +495,123 @@ namespace JSON_Tools.JSON_Tools
 		/// This function is used by the DEFAULT and NO_RECURSION JsonTabularizerStrategy's<br></br>
 		/// but the NO_RECURSION strategy does not try to do recursive search.
 		/// </summary>
-		/// <param name="obj"></param>
+		/// <param name="json"></param>
 		/// <param name="cls"></param>
 		/// <param name="depth"></param>
-		/// <param name="tab_path"></param>
+		/// <param name="tabPath"></param>
 		/// <param name="result"></param>
-		/// <param name="rest_of_row"></param>
-		/// <param name="super_keylist"></param>
-		/// <param name="key_sep"></param>
-		private void BuildTableHelper_DEFAULT(JNode obj,
+		/// <param name="restOfRow"></param>
+		/// <param name="superKeylist"></param>
+		/// <param name="keySep"></param>
+		private void BuildTableHelper_DEFAULT(JNode json,
 									JsonFormat cls,
 									int depth,
-									JArray tab_path,
+									JArray tabPath,
 									List<JNode> result,
-									Dictionary<string, JNode> rest_of_row,
-									List<string> super_keylist,
-									string key_sep)
+									Dictionary<string, JNode> restOfRow,
+									List<string> superKeylist,
+									string keySep)
 		{
-			List<string> new_super_keylist = new List<string>(super_keylist);
-			Dictionary<string, JNode> new_rest_of_row = new Dictionary<string, JNode>(rest_of_row);
-			if (depth == tab_path.Length)
+			var newRestOfRow = new Dictionary<string, JNode>(restOfRow);
+			if (depth == tabPath.Length)
 			{
-				AnyTableToRecord(obj, cls, new_rest_of_row, result, new_super_keylist, key_sep);
+				AnyTableToRecord(json, cls, newRestOfRow, result, superKeylist, keySep);
 				return;
 			}
 			else
 			{
-				if (obj is JArray)
+				if (json is JArray arr)
 				{
-					foreach (JNode subobj in ((JArray)obj).children)
+					foreach (JNode subobj in arr.children)
 					{
-						BuildTableHelper_DEFAULT(subobj, cls, depth + 1, tab_path, result, new_rest_of_row, new_super_keylist, key_sep);
+						BuildTableHelper_DEFAULT(subobj, cls, depth + 1, tabPath, result, newRestOfRow, superKeylist, keySep);
 					}
 				}
 				else
 				{
-					string new_key = (string)tab_path[depth].value;
-					string super_key = string.Join(key_sep, new_super_keylist);
-					Dictionary<string, JNode> children = ((JObject)obj).children;
-					foreach (string k in children.Keys)
+					string newKey = (string)tabPath[depth].value;
+					string superKey = string.Join(keySep, superKeylist);
+					Dictionary<string, JNode> children = ((JObject)json).children;
+					foreach (KeyValuePair<string, JNode> kv in children)
 					{
-						JNode v = children[k];
-						if (k == new_key) continue;
-						string newk = FormatKey(k, super_key, key_sep);
-						if (v.type == Dtype.OBJ)
+						if (kv.Key == newKey) continue;
+						string newk = FormatKey(kv.Key, superKey, keySep);
+						if (kv.Value is JObject ov)
 						{
-							JObject ov = (JObject)v;
-							foreach (string subk in ov.children.Keys)
+							foreach (KeyValuePair<string, JNode> subkv in ov.children)
 							{
-								JNode subv = ov[subk];
-								// add hanging scalar dicts to rest_of_row
-								if ((subv.type & Dtype.ARR_OR_OBJ) == 0)
+								// add hanging scalar dicts to restOfRow
+								if (!(subkv.Value is JArray || subkv.Value is JObject))
 								{
-									new_rest_of_row[$"{newk}{key_sep}{subk}"] = subv;
+									newRestOfRow[$"{newk}{keySep}{subkv.Key}"] = subkv.Value;
 								}
 							}
 						}
-						else if (v.type != Dtype.ARR)
+						else if (kv.Value.type != Dtype.ARR)
 						{
-							new_rest_of_row[newk] = v;
+							newRestOfRow[newk] = kv.Value;
 						}
 					}
-					new_super_keylist.Add(new_key);
-					BuildTableHelper_DEFAULT(children[new_key], cls, depth + 1, tab_path, result, new_rest_of_row, new_super_keylist, key_sep);
+					superKeylist.Add(newKey);
+					BuildTableHelper_DEFAULT(children[newKey], cls, depth + 1, tabPath, result, newRestOfRow, superKeylist, keySep);
+					superKeylist.RemoveAt(superKeylist.Count - 1);
 				}
 			}
 		}
 
 		/// <summary>
 		/// Recursively searches a JSON object/array and all subobjects/subarrays<br></br>
-		/// and makes a flattened long object (which is passed in as rest_of_row).<br></br>
+		/// and makes a flattened long object (which is passed in as restOfRow).<br></br>
 		/// For example, this would take {"a": [1, 2, 3], "b": {"c": 1, "d": [1, 2]}, "e": "scal"}<br></br>
 		/// and make the flattened row<br></br>
 		/// {"a.col1": 1, "a.col2": 2, "a.col3": 3, "b.c": 1, "b.d.col1": 1, "b.d.col2": 2, "e": "scal"}
 		/// </summary>
 		/// <param name="row"></param>
-		/// <param name="key_sep"></param>
-		/// <param name="rest_of_row"></param>
-		/// <param name="super_keylist"></param>
-		private void FlattenSingleRow_FULL_RECURSIVE(JNode row, string key_sep, Dictionary<string, JNode> rest_of_row, List<string> super_keylist)
+		/// <param name="keySep"></param>
+		/// <param name="restOfRow"></param>
+		/// <param name="superKeylist"></param>
+		private void FlattenSingleRow_FULL_RECURSIVE(JNode row, string keySep, Dictionary<string, JNode> restOfRow, List<string> superKeylist)
 		{
-			string super_key = string.Join(key_sep, super_keylist);
-			Func<string, string> keyformat = (string x) => FormatKey(x, super_key, key_sep);
-			if (row is JArray)
+			string superKey = string.Join(keySep, superKeylist);
+			Func<string, string> keyformat = (string x) => FormatKey(x, superKey, keySep);
+			if (row is JArray arow)
 			{
-				JArray arow = (JArray)row;
 				for (int ii = 0; ii < arow.Length; ii++)
 				{
 					JNode child = arow[ii];
+					string colname = $"col{ii + 1}";
 					if (child is JArray || child is JObject)
 					{
-						List<string> new_super_keylist = new List<string>(super_keylist);
-						new_super_keylist.Add($"col{ii + 1}");
-						FlattenSingleRow_FULL_RECURSIVE(child, key_sep, rest_of_row, new_super_keylist);
+						superKeylist.Add(colname);
+						FlattenSingleRow_FULL_RECURSIVE(child, keySep, restOfRow, superKeylist);
+						superKeylist.RemoveAt(superKeylist.Count - 1);
 					}
 					else
 					{
-						string key = keyformat($"col{ii + 1}");
-						rest_of_row[key] = child;
+						string key = keyformat(colname);
+						restOfRow[key] = child;
 					}
 				}
 			}
-			else if (row is JObject)
+			else if (row is JObject orow)
 			{
-				JObject orow = (JObject)row;
-				foreach (string key in orow.children.Keys)
+				foreach (KeyValuePair<string, JNode> rowkv in orow.children)
 				{
-					JNode child = orow[key];
-					if (child is JArray || child is JObject)
+					if (rowkv.Value is JArray || rowkv.Value is JObject)
 					{
-						List<string> new_super_keylist = new List<string>(super_keylist);
-						new_super_keylist.Add(key);
-						FlattenSingleRow_FULL_RECURSIVE(child, key_sep, rest_of_row, new_super_keylist);
+						superKeylist.Add(rowkv.Key);
+						FlattenSingleRow_FULL_RECURSIVE(rowkv.Value, keySep, restOfRow, superKeylist);
+						superKeylist.RemoveAt(superKeylist.Count - 1);
 					}
 					else
 					{
-						rest_of_row[keyformat(key)] = child;
+						restOfRow[keyformat(rowkv.Key)] = rowkv.Value;
 					}
 				}
 			}
 			else
 			{
-				rest_of_row[super_key] = row;
+				restOfRow[superKey] = row;
 			}
 		}
 
@@ -641,15 +622,15 @@ namespace JSON_Tools.JSON_Tools
 		/// </summary>
 		/// <param name="obj"></param>
 		/// <param name="result"></param>
-		/// <param name="key_sep"></param>
+		/// <param name="keySep"></param>
 		private void BuildTableHelper_FULL_RECURSIVE(JNode obj,
 												List<JNode> result,
-												string key_sep = ".")
+												string keySep = ".")
 		{
 			foreach (JNode child in ((JArray)obj).children)
 			{
 				Dictionary<string, JNode> row = new Dictionary<string, JNode>();
-				FlattenSingleRow_FULL_RECURSIVE(child, key_sep, row, new List<string>());
+				FlattenSingleRow_FULL_RECURSIVE(child, keySep, row, new List<string>());
 				result.Add(new JObject(0, row));
 			}
 		}
@@ -663,19 +644,18 @@ namespace JSON_Tools.JSON_Tools
 		/// </summary>
 		/// <param name="obj"></param>
 		/// <param name="schema"></param>
-		/// <param name="key_sep"></param>
+		/// <param name="keySep"></param>
 		/// <returns></returns>
 		/// <exception cref="ArgumentException"></exception>
-		private void BuildTableHelper_STRINGIFY_ITERABLES(JNode obj, List<JNode> result, string key_sep = ".")
+		private void BuildTableHelper_STRINGIFY_ITERABLES(JNode obj, List<JNode> result, string keySep = ".")
 		{
 			if (obj is JArray)
             {
 				foreach (JNode child in ((JArray)obj).children)
 				{
 					Dictionary<string, JNode> row = new Dictionary<string, JNode>();
-					if (child is JArray)
+					if (child is JArray achild)
 					{
-						JArray achild = (JArray)child;
 						for (int ii = 0; ii < achild.Length; ii++)
 						{
 							string key = $"col{ii + 1}";
@@ -690,19 +670,17 @@ namespace JSON_Tools.JSON_Tools
 							}
 						}
 					}
-					else if (child is JObject)
+					else if (child is JObject ochild)
 					{
-						JObject ochild = (JObject)child;
-						foreach (string key in ochild.children.Keys)
+						foreach (KeyValuePair<string, JNode> subkv in ochild.children)
 						{
-							JNode subchild = ochild[key];
-							if (subchild is JArray || subchild is JObject)
+							if (subkv.Value is JArray || subkv.Value is JObject)
 							{
-								row[key] = new JNode(subchild.ToString(), Dtype.STR, 0); //.Replace("\"", "\\\""), Dtype.STR, 0);
+								row[subkv.Key] = new JNode(subkv.Value.ToString(), Dtype.STR, 0); //.Replace("\"", "\\\""), Dtype.STR, 0);
 							}
 							else
 							{
-								row[key] = subchild;
+								row[subkv.Key] = subkv.Value;
 							}
 						}
 					}
@@ -713,23 +691,22 @@ namespace JSON_Tools.JSON_Tools
 			JObject oobj = (JObject)obj;
 			// obj is a dict mapping some number of keys to scalars and the rest to arrays
 			// some keys may be mapped to hanging all-scalar dicts and not scalars
-			Dictionary<string, JArray> arr_dict = new Dictionary<string, JArray>();
-			Dictionary<string, JNode> not_arr_dict = new Dictionary<string, JNode>();
-			int len_arr = 0;
-			foreach (string k in oobj.children.Keys)
+			var arrDict = new Dictionary<string, JArray>();
+			var notArrDict = new Dictionary<string, JNode>();
+			int lenArr = 0;
+			foreach (KeyValuePair<string, JNode> kv in oobj.children)
 			{
-				JNode v = oobj[k];
-				if (v is JArray varr)
+				if (kv.Value is JArray varr)
 				{
-					arr_dict[k] = varr;
-					if (varr.Length > len_arr) { len_arr = varr.Length; }
+					arrDict[kv.Key] = varr;
+					if (varr.Length > lenArr) { lenArr = varr.Length; }
 				}
 				else
 				{
-					not_arr_dict[k] = v;
+					notArrDict[kv.Key] = kv.Value;
 				}
 			}
-			not_arr_dict = ResolveHang(not_arr_dict, key_sep);
+			notArrDict = ResolveHang(notArrDict, keySep);
 			// for each array child, iterate through the arrays in parallel,
 			// and make the i^th object in each record contain the following:
 			// * all the scalar values of the non-array children in the object
@@ -737,12 +714,12 @@ namespace JSON_Tools.JSON_Tools
 			//     - if the array is shorter than i, an empty string
 			//     - if the i^th element is an iterable, the stringified form of that iterable
 			//     - if the i^th element is a scalar, that scalar
-			for (int ii = 0; ii < len_arr; ii++)
+			for (int ii = 0; ii < lenArr; ii++)
 			{
 				Dictionary<string, JNode> newrec = new Dictionary<string, JNode>();
-				foreach (string k in arr_dict.Keys)
+				foreach (string k in arrDict.Keys)
 				{
-					JArray v = arr_dict[k];
+					JArray v = arrDict[k];
 					// if one array is longer than others, the missing values from the short rows
 					// are filled by empty strings
 					if (ii >= v.Length)
@@ -759,13 +736,13 @@ namespace JSON_Tools.JSON_Tools
                     }
 				}
 				// now add in all the non-array values
-				foreach (string k in not_arr_dict.Keys)
-					newrec[k] = not_arr_dict[k];
+				foreach (string k in notArrDict.Keys)
+					newrec[k] = notArrDict[k];
 				result.Add(new JObject(0, newrec));
 			}
 		}
 
-		public JArray BuildTable(JNode obj, Dictionary<string, object> schema, string key_sep = ".")
+		public JArray BuildTable(JNode obj, Dictionary<string, object> schema, string keySep = ".")
 		{
 			JsonParser jsonParser = new JsonParser();
 			List<JNode> result = new List<JNode>();
@@ -778,7 +755,7 @@ namespace JSON_Tools.JSON_Tools
 				{
 					throw new ArgumentException($"This JSON does not have a tabular format, and BuildTable doesn't know how to proceed.");
 				}
-				BuildTableHelper_DEFAULT(obj, cls, 0, path, result, new Dictionary<string, JNode>(), new List<string>(), key_sep);
+				BuildTableHelper_DEFAULT(obj, cls, 0, path, result, new Dictionary<string, JNode>(), new List<string>(), keySep);
 				return new JArray(0, result);
 			}
 			else if (strategy == JsonTabularizerStrategy.FULL_RECURSIVE)
@@ -787,7 +764,7 @@ namespace JSON_Tools.JSON_Tools
 				{
 					throw new ArgumentException($"Full recursive strategy does not work on non-array JSON.");
 				}
-				BuildTableHelper_FULL_RECURSIVE(obj, result, key_sep);
+				BuildTableHelper_FULL_RECURSIVE(obj, result, keySep);
 			}
 			else if (strategy == JsonTabularizerStrategy.STRINGIFY_ITERABLES)
 			{
@@ -797,87 +774,102 @@ namespace JSON_Tools.JSON_Tools
 			{
 				// default strategy - find tables in the schema, and recursively add everything that's on the path
 				// to the tables.
-				Dictionary<string, JsonFormat> tab_paths = FindTabsInSchema(schema);
-				if (tab_paths.Count == 0)
+				Dictionary<string, JsonFormat> tabPaths = FindTabsInSchema(schema);
+				if (tabPaths.Count == 0)
 				{
 					return new JArray();
 				}
-				if (tab_paths.Count > 1)
+				if (tabPaths.Count > 1)
 				{
-					throw new ArgumentException($"This JSON contains {tab_paths.Count} possible tables, and BuildTable doesn't know how to proceed.");
+					throw new ArgumentException($"This JSON contains {tabPaths.Count} possible tables, and BuildTable doesn't know how to proceed.");
 				}
-				foreach (string pathstr in tab_paths.Keys)
+				foreach (string pathstr in tabPaths.Keys)
 				{
-					JsonFormat clsname = tab_paths[pathstr];
-					jsonParser.ii = 0;
-					jsonParser.line_num = 0;
+					JsonFormat clsname = tabPaths[pathstr];
+					jsonParser.Reset();
 					path = jsonParser.ParseArray(pathstr, 0);
 					cls = clsname;
 				}
-				BuildTableHelper_DEFAULT(obj, cls, 0, path, result, new Dictionary<string, JNode>(), new List<string>(), key_sep);
+				BuildTableHelper_DEFAULT(obj, cls, 0, path, result, new Dictionary<string, JNode>(), new List<string>(), keySep);
 			}
 			return new JArray(0, result);
 		}
 
-		/// <summary>
-		/// If a string contains the delimiter, wrap that string in quotes.<br></br>
-		/// Also replace any newlines with "\\n".<br></br>
-		/// Otherwise, leave it alone.
-		/// </summary>
-		/// <param name="s"></param>
-		/// <param name="delim"></param>
-		/// <param name="quote_char"></param>
-		/// <returns></returns>
-		private string ApplyQuotesIfNeeded(string s, char delim, char quote_char)
+        /// <summary>
+        /// If string s contains the delimiter, '\r', '\n', or a literal quote character, append (the string wrapped in quotes) to sb.<br></br>
+        /// If s contains literal quote character, it is escaped by doubling it up according to the CSV RFC 4180 (https://www.ietf.org/rfc/rfc4180.txt)<br></br>
+        /// Otherwise, append s to sb unchanged
+        /// </summary>
+        /// <param name="delim">CSV delimiter ('\x00' if not specified)</param>
+        /// <param name="quote">CSV quote char ('\x00' if not specified)</param>
+        /// <returns></returns>
+        public static void ApplyQuotesIfNeeded(StringBuilder sb, string s, char delim, char quote)
 		{
-			string squote_char = new string(quote_char, 1);
-			StringBuilder sb = new StringBuilder();
-			if (s.Contains(delim))
+			if (s.IndexOfAny(new char[] {delim, '\r', '\n', quote}) >= 0)
 			{
-				// if the string contains the delimiter, we need to wrap it in quotes
-				// we also need to escape all literal quote characters in the string
-				// regardless of what happens, we need to replace internal newlines with "\\n"
-				// so we don't get fake rows
-				sb.Append(quote_char);
-				foreach (char c in s)
-                {
-					if (c == quote_char)
-						sb.Append("\\\"");
-					else if (c == '\n')
-						sb.Append("\\n");
-					else
-						sb.Append(c);
-                }
-				sb.Append(quote_char);
-				return sb.ToString();
-			}
-			// just replace newlines
-			foreach (char c in s)
-            {
-				if (c == '\n')
-					sb.Append("\\n");
-				else
+				sb.Append(quote);
+				for (int ii = 0; ii < s.Length; ii++)
+				{
+					char c = s[ii];
 					sb.Append(c);
-            }
-			return sb.ToString();
+					if (c == quote)
+                        sb.Append(quote);
+				}
+				sb.Append(quote);
+			}
+			else sb.Append(s);
 		}
 
-		public string TableToCsv(JArray table, char delim = ',', char quote_char = '"', string[] header = null, bool bools_as_ints = false)
+        /// <summary>
+        /// append the CSV (RFC 4180 adherent, using quote character = quote, delimiter = delim) representation of jnode's value to sb.
+        /// </summary>
+        /// <param name="delim">CSV delimiter ('\x00' if not specified)</param>
+        /// <param name="quote">CSV quote char ('\x00' if not specified)</param>
+        /// <param name="boolsAsInts">if true, represent true as "1" and false as "0". If false, represent them as "true" and "false" respectively</param>
+        public static void CsvStringToSb(StringBuilder sb, JNode jnode, char delim, char quote, bool boolsAsInts)
+		{
+			string val;
+            switch (jnode.type)
+            {
+            case Dtype.STR:
+                val = (string)jnode.value;
+                break; // only apply quotes if internal delims, quotes, or newlines
+            case Dtype.DATE:
+                val = ((DateTime)jnode.value).ToString("yyyy-MM-dd");
+                break;
+            case Dtype.DATETIME:
+                val = ((DateTime)jnode.value).ToString("yyyy-MM-dd hh:mm:ss");
+                break;
+            case Dtype.NULL:
+                return; // nulls should be empty entries
+            case Dtype.BOOL:
+				sb.Append((bool)jnode.value
+					? (boolsAsInts ? "1" : "true")
+					: (boolsAsInts ? "0" : "false"));
+                return;
+            default:
+                val = jnode.ToString();
+                break;
+            }
+			ApplyQuotesIfNeeded(sb, val, delim, quote);
+        }
+
+		public string TableToCsv(JArray table, char delim = ',', char quote = '"', string newline = "\n", string[] header = null, bool boolsAsInts = false)
 		{
 			// allow the user to supply their own column order. If they don't, just alphabetically sort colnames
 			if (header == null)
 			{
-				HashSet<string> all_keys = new HashSet<string>();
+				HashSet<string> allKeys = new HashSet<string>();
 				foreach (JNode child in table.children)
 				{
 					foreach (string key in ((JObject)child).children.Keys)
 					{
-						all_keys.Add(key);
+						allKeys.Add(key);
 					}
 				}
-				header = new string[all_keys.Count];
+				header = new string[allKeys.Count];
 				int ii = 0;
-				foreach (string key in all_keys)
+				foreach (string key in allKeys)
 				{
 					header[ii++] = key;
 				}
@@ -887,53 +879,27 @@ namespace JSON_Tools.JSON_Tools
 			for (int ii = 0; ii < header.Length; ii++)
 			{
 				string col = header[ii];
-				sb.Append(ApplyQuotesIfNeeded(col, delim, quote_char));
+				ApplyQuotesIfNeeded(sb, JNode.StrToString(col, false), delim, quote);
 				if (ii < header.Length - 1) sb.Append(delim);
 			}
-			sb.Append('\n');
+			sb.Append(newline);
 			foreach (JNode row in table.children)
 			{
 				JObject orow = (JObject)row;
 				for (int ii = 0; ii < header.Length; ii++)
 				{
 					string col = header[ii];
-					if (!orow.children.TryGetValue(col, out JNode val))
+					if (!orow.children.TryGetValue(col, out JNode jnode))
 					{
 						// sometimes the row might have a missing key.
 						// in that case, just leave an empty entry, and add a delimiter if needed.
 						if (ii < header.Length - 1) sb.Append(delim);
 						continue;
 					}
-					switch (val.type)
-					{
-						case Dtype.STR:
-							sb.Append(ApplyQuotesIfNeeded((string)val.value, delim, quote_char));
-							break; // only apply quotes if internal delim
-						case Dtype.DATE:
-							sb.Append(((DateTime)val.value).ToString("yyyy-MM-dd"));
-							break;
-						case Dtype.DATETIME:
-							sb.Append(((DateTime)val.value).ToString("yyyy-MM-dd hh:mm:ss"));
-							break;
-						case Dtype.NULL:
-							break; // nulls should be empty entries
-						case Dtype.BOOL:
-							if (bools_as_ints)
-							{
-								sb.Append((bool)val.value ? "1" : "0");
-							}
-							else
-							{
-								sb.Append((bool)val.value ? "true" : "false");
-							}
-							break;
-						default:
-							sb.Append(val.ToString()); // everything else gets quote chars
-							break;
-					}
+					CsvStringToSb(sb, jnode, delim, quote, boolsAsInts);
 					if (ii < header.Length - 1) sb.Append(delim);
 				}
-				sb.Append('\n');
+				sb.Append(newline);
 			}
 			return sb.ToString();
 		}

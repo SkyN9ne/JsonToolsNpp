@@ -5,6 +5,8 @@ using System.Text;
 using System.Windows.Forms;
 using JSON_Tools.JSON_Tools;
 using JSON_Tools.Utils;
+using Kbg.NppPluginNET;
+using Kbg.NppPluginNET.PluginInfrastructure;
 
 namespace JSON_Tools.Forms
 {
@@ -15,25 +17,30 @@ namespace JSON_Tools.Forms
         public JsonToCsvForm(JNode json)
         {
             InitializeComponent();
+            NppFormHelper.RegisterFormIfModeless(this, true);
+            FormStyle.ApplyStyle(this, Main.settings.use_npp_styling);
             tabularizer = new JsonTabularizer();
             this.json = json;
             DelimBox.SelectedIndex = 0;
             StrategyBox.SelectedIndex = 0;
+            eolComboBox.SelectedIndex = (int)Main.settings.csv_newline;
+        }
+
+        /// <summary>
+        /// suppress the default response to the Tab key
+        /// </summary>
+        /// <param name="keyData"></param>
+        /// <returns></returns>
+        protected override bool ProcessDialogKey(Keys keyData)
+        {
+            if (keyData.HasFlag(Keys.Tab)) // this covers Tab with or without modifiers
+                return true;
+            return base.ProcessDialogKey(keyData);
         }
 
         private void JsonToCsvForm_KeyUp(object sender, KeyEventArgs e)
         {
-            if (e.KeyCode == Keys.Escape)
-            {
-                e.Handled = true;
-                Close();
-            }
-            else if (e.KeyCode == Keys.Enter)
-            {
-                if (sender is Button btn)
-                    btn.PerformClick();
-                e.Handled = true;
-            }
+            NppFormHelper.GenericKeyUpHandler(this, sender, e, true);
         }
 
         private void GenerateCSVButton_Click(object sender, EventArgs e)
@@ -69,7 +76,8 @@ namespace JSON_Tools.Forms
             {
                 Dictionary<string, object> schema = JsonSchemaMaker.BuildSchema(json);
                 JNode tab = tabularizer.BuildTable(json, schema, keysep);
-                csv = tabularizer.TableToCsv((JArray)tab, delim, '"', null, BoolsToIntsCheckBox.Checked);
+                string eol = Npp.GetEndOfLineString(eolComboBox.SelectedIndex);
+                csv = tabularizer.TableToCsv((JArray)tab, delim, '"', eol, null, BoolsToIntsCheckBox.Checked);
             }
             catch (Exception ex)
             {
@@ -81,17 +89,18 @@ namespace JSON_Tools.Forms
                 return;
             }
             Npp.notepad.FileNew();
-            int out_len = Encoding.UTF8.GetByteCount(csv);
-            Npp.editor.AppendText(out_len, csv);
+            int outLen = Encoding.UTF8.GetByteCount(csv);
+            Npp.editor.AppendText(outLen, csv);
+            Npp.RemoveTrailingSOH();
             Close();
         }
 
         private void DocsButton_Click(object sender, EventArgs e)
         {
-            string help_url = "https://github.com/molsonkiko/JSONToolsNppPlugin/tree/main/docs/json-to-csv.md";
+            string helpUrl = "https://github.com/molsonkiko/JSONToolsNppPlugin/tree/main/docs/json-to-csv.md";
             try
             {
-                var ps = new ProcessStartInfo(help_url)
+                var ps = new ProcessStartInfo(helpUrl)
                 {
                     UseShellExecute = true,
                     Verb = "open"

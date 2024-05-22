@@ -8,7 +8,7 @@ namespace JSON_Tools.Tests
         public static int MyUnitTest(string[][] testcases)
         {
             JsonParser jsonParser = new JsonParser();
-            int tests_failed = 0;
+            int testsFailed = 0;
             YamlDumper yamlDumper = new YamlDumper();
             for (int ii = 0; ii < testcases.Length; ii++)
             {
@@ -25,15 +25,15 @@ Expected
 Got
 {3}",
                                       ii + 1, description, correct, result));
-                    tests_failed++;
+                    testsFailed++;
                 }
             }
-            Npp.AddLine("Failed " + tests_failed + " tests.");
-            Npp.AddLine("Passed " + (testcases.Length - tests_failed) + " tests.");
-            return tests_failed;
+            Npp.AddLine("Failed " + testsFailed + " tests.");
+            Npp.AddLine("Passed " + (testcases.Length - testsFailed) + " tests.");
+            return testsFailed;
         }
 
-        public static void Test()
+        public static bool Test()
         {
             string[][] tests = {
 				// space at end of key
@@ -72,7 +72,7 @@ Got
                 new string[] { "{\"a\": \"RT @blah: MondayMo\\nring\"}", "a: \"RT @blah: MondayMo\\nring\"\n", "value contains newline and colon" },
                 new string[] { "{\"\\\"a: 'b'\": \"a\"}", "\'\"a: \'\'b\'\'\': a\n", "key contains quotes and colon" }
             };
-            MyUnitTest(tests);
+            return MyUnitTest(tests) > 0; 
         }
     }
 }

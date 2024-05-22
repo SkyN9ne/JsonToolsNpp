@@ -3,27 +3,14 @@ A query language for JSON.
 */
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Text;
 using System.Text.RegularExpressions;
+using System.Windows.Forms;
 using JSON_Tools.Utils;
 
 namespace JSON_Tools.JSON_Tools
 {
     #region DATA_HOLDER_STRUCTS
-    public struct Key_Node
-    {
-        public object obj;
-        public JNode node;
-
-        public Key_Node(object obj, JNode node)
-        {
-            this.obj = obj;
-            this.node = node;
-        }
-    }
-
     public struct Obj_Pos
     {
         public object obj;
@@ -32,8 +19,45 @@ namespace JSON_Tools.JSON_Tools
         public Obj_Pos(object obj, int pos) { this.obj = obj; this.pos = pos; }
     }
     #endregion DATA_HOLDER_STRUCTS
-    
+
     #region OTHER_HELPER_CLASSES
+    [Flags]
+    public enum IndexerStart
+    {
+        NOT_AN_INDEXER = 1,
+        /// <summary>[</summary>
+        SQUAREBRACE = NOT_AN_INDEXER * 2,
+        /// <summary>{</summary>
+        CURLYBRACE = SQUAREBRACE * 2,
+        /// <summary>.</summary>
+        DOT = CURLYBRACE * 2,
+        /// <summary>..</summary>
+        DOUBLEDOT = DOT * 2,
+        /// <summary>..[</summary>
+        DOUBLEDOT_SQUAREBRACE = DOUBLEDOT * 2,
+        /// <summary>-&gt;</summary>
+        FORWARD_ARROW = DOUBLEDOT_SQUAREBRACE * 2,
+        /// <summary>![</summary>
+        BANG_SQUAREBRACE = FORWARD_ARROW * 2,
+        /// <summary>!.</summary>
+        BANG_DOT = BANG_SQUAREBRACE * 2,
+        // currently recursive negated indices are not supported because (a) annoying to implement and (b) potentially very counterintuitive
+        ///// <summary>!..</summary>
+        //BANG_DOUBLEDOT = BANG_DOT * 2,
+        ///// <summary>!..[</summary>
+        //BANG_DOUBLEDOT_SQUAREBRACE = BANG_DOUBLEDOT * 2,
+
+        ANY_DOT_TYPE = DOT | DOUBLEDOT | BANG_DOT /*| BANG_DOUBLEDOT*/,
+
+        PROJECTION = CURLYBRACE | FORWARD_ARROW,
+
+        ANY_SQUAREBRACE_TYPE = BANG_SQUAREBRACE | SQUAREBRACE | DOUBLEDOT_SQUAREBRACE,
+
+        ANY_BANG_TYPE = BANG_DOT | BANG_SQUAREBRACE /*| BANG_DOUBLEDOT | BANG_DOUBLEDOT_SQUAREBRACE*/,
+
+        ANY_DOUBLEDOT_TYPE = DOUBLEDOT | DOUBLEDOT_SQUAREBRACE /*| BANG_DOUBLEDOT | BANG_DOUBLEDOT_SQUAREBRACE*/,
+    }
+
     /// <summary>
     /// anything that filters the keys of an object or the indices of an array
     /// </summary>
@@ -78,11 +102,11 @@ namespace JSON_Tools.JSON_Tools
     /// </summary>
     public class Projection : Indexer
     {
-        public Func<JNode, IEnumerable<Key_Node>> proj_func;
+        public Func<JNode, IEnumerable<object>> projFunc;
 
-        public Projection(Func<JNode, IEnumerable<Key_Node>> proj_func)
+        public Projection(Func<JNode, IEnumerable<object>> projFunc)
         {
-            this.proj_func = proj_func;
+            this.projFunc = projFunc;
         }
     }
 
@@ -100,38 +124,133 @@ namespace JSON_Tools.JSON_Tools
         }
     }
 
-    public struct IndexerFunc
+    public class IndexerFunc
     {
         /// <summary>
         /// An enumerator that yields JNodes from a JArray or JObject
         /// </summary>
-        public Func<JNode, IEnumerable<Key_Node>> idxr;
+        public Func<JNode, IEnumerable<object>> idxr;
         /// <summary>
         /// rather than making a JObject or JArray to contain a single selection from a parent<br></br>
         /// (e.g., when selecting a single key or a single index), we will just return that one element as a scalar.<br></br>
         /// As a result, the query @.foo[0] on {"foo": [1,2]} returns 1 rather than {"foo": [1]}
         /// </summary>
-        public bool has_one_option;
+        public bool hasOneOption;
         /// <summary>
         /// is an array or object projection made by the {foo: @[0], bar: @[1]} type syntax.
         /// </summary>
-        public bool is_projection;
+        public bool isProjection;
         /// <summary>
         /// is an object
         /// </summary>
-        public bool is_dict;
+        public bool isDict;
         /// <summary>
         /// involves recursive search
         /// </summary>
-        public bool is_recursive;
+        public bool isRecursive;
 
-        public IndexerFunc(Func<JNode, IEnumerable<Key_Node>> idxr, bool has_one_option, bool is_projection, bool is_dict, bool is_recursive)
+        public IndexerFunc(Func<JNode, IEnumerable<object>> idxr, bool hasOneOption, bool isProjection, bool isDict, bool isRecursive)
         {
             this.idxr = idxr;
-            this.has_one_option = has_one_option;
-            this.is_projection = is_projection;
-            this.is_dict = is_dict;
-            this.is_recursive = is_recursive;
+            this.hasOneOption = hasOneOption;
+            this.isProjection = isProjection;
+            this.isDict = isDict;
+            this.isRecursive = isRecursive;
+        }
+
+        /// <summary>
+        /// Unlike other indexers, boolean indices may simply return the original object
+        /// (for example @[@.a &gt; 3] returns <i>an entire object</i> if the value with key "a" is greater than 3)<br></br>
+        /// OR return individual elements of the original object (for example @[@ &gt; 3] returns <i>the elements of an object/array</i> that are greater than 3).<br></br>
+        /// This is important because we want boolean indices to be easy to chain.<br></br>
+        /// Because of this, ApplyBooleanIndex must be an instance method of the IndexerFunc class,
+        /// so that it can set the hasOneOption and isDict attributes of this class.
+        /// </summary>
+        /// <param name="inds"></param>
+        /// <returns></returns>
+        /// <exception cref="VectorizedArithmeticException">if the boolean index has the wrong length or contains non-booleans</exception>
+        public Func<JNode, IEnumerable<object>> ApplyBooleanIndex(JNode inds)
+        {
+            IEnumerable<object> boolIdxrFunc(JNode x)
+            {
+                hasOneOption = false;
+                JNode newinds = (inds is CurJson cj)
+                    ? cj.function(x)
+                    : inds;
+                isDict = x is JObject;
+                if (newinds.value is bool newibool)
+                {
+                    // to allow for boolean indices that filter on the entire object/array, like @.bar == @.foo or sum(@) == 0
+                    if (newibool)
+                    {
+                        // boolean indices yield each individual element of an array
+                        // but treat objects and scalars as atomic
+                        // because this allows chaining of boolean indices in an intuitive way
+                        // e.g., @[:][@.a < 2][@.b > 3].c[:][@ < 3]
+                        if (x is JArray xarr)
+                        {
+                            for (int ii = 0; ii < xarr.Length; ii++)
+                            {
+                                yield return xarr[ii];
+                            }
+                        }
+                        else
+                        {
+                            hasOneOption = true;
+                            yield return x;
+                        }
+                    }
+                    // if the condition is false, yield nothing
+                    yield break;
+                }
+                else if (newinds is JObject iobj)
+                {
+                    JObject xobj = (JObject)x;
+                    if (iobj.Length != xobj.Length)
+                    {
+                        throw new VectorizedArithmeticException($"bool index length {iobj.Length} does not match object/array length {xobj.Length}.");
+                    }
+                    foreach (KeyValuePair<string, JNode> kv in xobj.children)
+                    {
+                        bool iHasKey = iobj.children.TryGetValue(kv.Key, out JNode ival);
+                        if (iHasKey)
+                        {
+                            if (!(ival.value is bool ibool))
+                            {
+                                throw new VectorizedArithmeticException("bool index contains non-booleans");
+                            }
+                            if (ibool)
+                            {
+                                yield return kv;
+                            }
+                        }
+                    }
+                    yield break;
+                }
+                else if (newinds is JArray iarr)
+                {
+                    JArray xarr = (JArray)x;
+                    if (iarr.Length != xarr.Length)
+                    {
+                        throw new VectorizedArithmeticException($"bool index length {iarr.Length} does not match object/array length {xarr.Length}.");
+                    }
+                    for (int ii = 0; ii < xarr.Length; ii++)
+                    {
+                        JNode ival = iarr[ii];
+                        JNode xval = xarr[ii];
+                        if (!(ival.value is bool ibool))
+                        {
+                            throw new VectorizedArithmeticException("bool index contains non-booleans");
+                        }
+                        if (ibool)
+                        {
+                            yield return xval;
+                        }
+                    }
+                    yield break;
+                }
+            }
+            return boolIdxrFunc;
         }
     }
 
@@ -161,19 +280,98 @@ namespace JSON_Tools.JSON_Tools
 
     public class RemesPathArgumentException : RemesPathException
     {
-        public int arg_num { get; set; }
+        /// <summary>0-based index of the bad argument</summary>
+        public int ArgNum { get; set; }
+        /// <summary>
+        /// type that was passed in for that argument
+        /// </summary>
+        public Dtype GotType;
         public ArgFunction func { get; set; }
 
-        public RemesPathArgumentException(string description, int arg_num, ArgFunction func) : base(description)
+        /// <summary></summary>
+        /// <param name="description">a description of the error. Can be null, if gotType is specified.</param>
+        /// <param name="argIndex0Based">the argument where an incorrect type was passed in</param>
+        /// <param name="func">the function that raised this error (choose one from ArgFunction.FUNCTIONS)</param>
+        /// <param name="gotType">the type that was passed in for argument argIndex0Based</param>
+        public RemesPathArgumentException(string description, int argIndex0Based, ArgFunction func, Dtype gotType = Dtype.NULL) : base(description)
         {
-            this.arg_num = arg_num;
+            GotType = gotType;
+            ArgNum = argIndex0Based;
             this.func = func;
         }
 
         public override string ToString()
         {
-            string fmt_dtype = JNode.FormatDtype(func.input_types()[arg_num]);
-            return $"For argument {arg_num} of function {func.name}, expected {fmt_dtype}, instead {description}";
+            string validTypes = JNode.FormatDtype(func.TypeOptions(ArgNum));
+            if (description is null)
+                return $"For argument {ArgNum} of function {func.name}, expected {validTypes}, instead got type {JNode.FormatDtype(GotType)}";
+            return $"For argument {ArgNum} of function {func.name}, expected {validTypes}, instead {description}";
+        }
+    }
+
+    public class InvalidMutationException : RemesPathException
+    {
+        public InvalidMutationException(string description) : base(description) { }
+
+        public override string ToString() { return description; }
+    }
+
+    public class RemesPathIndexOutOfRangeException : RemesPathException
+    {
+        public int index;
+        public JNode node;
+
+        public RemesPathIndexOutOfRangeException(int index, JNode node) : base("")
+        {
+            this.index = index;
+            this.node = node;
+        }
+
+        public override string ToString()
+        {
+            string typeName = JNode.DtypeStrings[node.type];
+            return $"Index {index} out of range for {typeName} {node.ToString()}";
+        }
+    }
+
+    /// <summary>
+    /// thrown by JQueryContext.TryGetValue when a variable name is referenced,
+    /// but the variable isn't declared until a later statement.
+    /// </summary>
+    public class RemesPathNameException : RemesPathException
+    {
+        public string varname;
+        public int indexInStatements;
+        public int indexOfDeclaration;
+
+        public RemesPathNameException(string varname, int indexInStatements, int indexOfDeclaration) : base("")
+        {
+            this.varname = varname;
+            this.indexInStatements = indexInStatements;
+            this.indexOfDeclaration = indexOfDeclaration;
+        }
+
+        public override string ToString()
+        {
+            return $"Variable named \"{varname}\" was referenced in statement {indexInStatements + 1}, " +
+                   $"but was not declared until statement {indexOfDeclaration + 1}";
+        }
+    }
+
+    public class RemesPathLoopVarNotAnArrayException : RemesPathException
+    {
+        public VarAssign Va;
+        public Dtype Dtype_;
+
+        public RemesPathLoopVarNotAnArrayException(VarAssign va, Dtype dtype) : base("")
+        {
+            this.Va = va;
+            this.Dtype_ = dtype;
+        }
+
+        public override string ToString()
+        {
+            return $"Loop variable named {Va.Name} must be an array, but got type {JNode.DtypeStrings[Dtype_]}";
         }
     }
     #endregion
@@ -184,177 +382,135 @@ namespace JSON_Tools.JSON_Tools
     public class RemesParser
     {
         public RemesPathLexer lexer;
-        // /// <summary>
-        // /// A LRU cache mapping queries to compiled results that the parser can check against
-        // /// to save time on parsing.<br></br>
-        // /// Not used, because parsing is really fast and so caching is unnecessary 
-        // /// </summary>
-        //public LruCache<string, JNode> cache;
 
-        ///// <summary>
-        ///// The cache_capacity indicates how many queries to store in the old query cache.
-        ///// </summary>
-        ///// <param name="cache_capacity"></param>
-        public RemesParser()//(int cache_capacity = 64)
+        /// <summary>
+        /// A LRU cache mapping queries to compiled results that the parser can check against
+        /// to save time on parsing.
+        /// </summary>
+        public LruCache<string, JNode> cache;
+
+        /// <summary>
+        /// The cacheCapacity indicates how many queries to store in the old query cache.
+        /// </summary>
+        /// <param name="cacheCapacity"></param>
+        public RemesParser(int cacheCapacity = 64)
         {
-            //cache = new LruCache<string, JNode>();
+            cache = new LruCache<string, JNode>(cacheCapacity);
             lexer = new RemesPathLexer();
         }
 
         /// <summary>
         /// Parse a query and compile it into a RemesPath function that operates on JSON.<br></br>
-        /// If the query is not a function of input, it will instead just output fixed JSON.<br></br>
-        /// If is_assignment_expr is true, this means that the query is an assignment expression<br></br>
-        /// (i.e., a query that mutates the underlying JSON)
+        /// If the query is not a function of input, it will instead just output fixed JSON.
         /// </summary>
         /// <param name="query"></param>
         /// <returns></returns>
-        public JNode Compile(List<object> toks)
+        public JNode Compile(string query)
         {
-            JNode result = (JNode)ParseExprOrScalarFunc(toks, 0).obj;
+            if (cache.TryGetValue(query, out JNode oldResult))
+                return oldResult;
+            List<object> toks = lexer.Tokenize(query);
+            JNode result = ParseQuery(toks);
+            cache.SetDefault(query, result);
             return result;
         }
 
         /// <summary>
         /// Perform a RemesPath query on JSON and return the result.<br></br>
-        /// If is_assignment_expr is true, this means that the query is an assignment expression<br></br>
+        /// If isAssignmentExpr is true, this means that the query is an assignment expression<br></br>
         /// (i.e., a query that mutates the underlying JSON)
         /// </summary>
         /// <param name="query"></param>
         /// <param name="obj"></param>
         /// <returns></returns>
-        public JNode Search(string query, JNode obj, out bool is_assignment_expr)
+        public JNode Search(string query, JNode obj)
         {
-            List<object> toks = lexer.Tokenize(query, out is_assignment_expr);
-            foreach (object tok in toks)
-            {
-                if (tok is char c && c == '=')
-                {
-                    is_assignment_expr = true;
-                    break;
-                }
-            }
-            if (is_assignment_expr)
-            {
-                JNode mutation_func = CompileAssignmentExpr(toks);
-                // cache.Add(query, mutation_func);
-                if (mutation_func is CurJson cjmut)
-                {
-                    return cjmut.function(obj);
-                }
-                return mutation_func;
-            }
-            JNode result = Compile(toks);
-            if (result is CurJson cjres)
-            {
-                return ((CurJson)result).function(obj);
-            }
-            return result;
+            JNode compiledQuery = Compile(query);
+            if (compiledQuery.CanOperate)
+                return compiledQuery.Operate(obj);
+            return compiledQuery;
         }
 
-        public JNode CompileAssignmentExpr(List<object> toks)
-        {
-            bool before_assignment_operator = true;
-            List<object> lhs_toks = new List<object>();
-            List<object> rhs_toks = new List<object>();
-            foreach (object tok in toks)
-            {
-                if (tok is char c && c == '=')
-                {
-                    before_assignment_operator = false;
-                    continue;
-                }
-                if (before_assignment_operator)
-                    lhs_toks.Add(tok);
-                else rhs_toks.Add(tok);
-            }
-            JNode lhs = Compile(lhs_toks);
-            JNode rhs = Compile(rhs_toks);
-            return ApplyAssignmentExpression(lhs, rhs);
-        } 
-
-        public static string EXPR_FUNC_ENDERS = "]:},)";
-        // these tokens have high enough precedence to stop an expr_function or scalar_function
-        public static string INDEXER_STARTERS = ".[{";
+        /// <summary>
+        /// these tokens have high enough precedence to stop an exprFunc (parsed by ParseExprFunc)
+        /// </summary>
+        public const string EXPR_FUNC_ENDERS = "]:},);";
+        public const string INDEXER_STARTERS = ".[{>!";
+        public const string PROJECTION_STARTERS = "{>";
 
         #region INDEXER_FUNCTIONS
-        private Func<JNode, IEnumerable<Key_Node>> ApplyMultiIndex(object inds, bool is_varname_list, bool is_recursive = false)
+        private Func<JNode, IEnumerable<object>> ApplyMultiIndex(object inds, bool isVarnameList, bool isRecursive = false)
         {
-            if (inds is CurJson)
+            if (inds is CurJson cj)
             {
-                IEnumerable<Key_Node> multi_idx_func(JNode x)
+                IEnumerable<object> multiIdxFunc(JNode x)
                 {
-                    return ApplyMultiIndex(((CurJson)inds).function(x), is_varname_list, is_recursive)(x);
+                    return ApplyMultiIndex(cj.function(x), isVarnameList, isRecursive)(x);
                 }
-                return multi_idx_func;
+                return multiIdxFunc;
             }
             var children = (List<object>)inds;
-            if (is_varname_list)
+            if (isVarnameList)
             {
-                if (is_recursive)
+                if (isRecursive)
                 {
-                    IEnumerable<Key_Node> multi_idx_func(JNode x, string path, HashSet<string> paths_visited)
+                    IEnumerable<object> multiIdxFunc(JNode x, string path, HashSet<string> pathsVisited)
                     {
-                        if (x is JArray)
+                        if (x is JArray xarr)
                         {
                             // a varname list can only match dict keys, not array indices
                             // we'll just recursively search from each child of this array
-                            JArray xarr = (JArray)x;
                             for (int ii = 0; ii < xarr.Length; ii++)
                             {
-                                foreach (Key_Node kv in multi_idx_func(xarr[ii], path + ',' + ii.ToString(), paths_visited))
+                                foreach (object kv in multiIdxFunc(xarr[ii], $"{path},{ii}", pathsVisited))
                                 {
                                     yield return kv;
                                 }
                             }
                         }
-                        else if (x is JObject)
+                        else if (x is JObject xobj)
                         {
-                            JObject xobj = (JObject)x;
                             // yield each key or regex match in this dict
                             // recursively descend from each key that doesn't match
                             foreach (object v in children)
                             {
-                                if (v is string)
+                                if (v is string strv)
                                 {
-                                    string strv = (string)v;
-                                    if (path == "") path = strv;
-                                    foreach (string k in xobj.children.Keys)
+                                    if (path.Length == 0) path = strv;
+                                    foreach (KeyValuePair<string, JNode> kv in xobj.children)
                                     {
-                                        JNode val = xobj[k];
-                                        string newpath = path + ',' + new JNode(k, Dtype.STR, 0).ToString();
-                                        if (k == strv)
+                                        string newpath = $"{path},{kv.Key}";
+                                        if (kv.Key == strv)
                                         {
-                                            if (!paths_visited.Contains(newpath))
-                                                yield return new Key_Node(0, val);
-                                            paths_visited.Add(newpath);
+                                            if (!pathsVisited.Contains(newpath))
+                                                yield return kv.Value;
+                                            pathsVisited.Add(newpath);
                                         }
                                         else
                                         {
-                                            foreach (Key_Node ono in multi_idx_func(val, newpath, paths_visited))
-                                                yield return new Key_Node(0, ono.node);
+                                            foreach (object node in multiIdxFunc(kv.Value, newpath, pathsVisited))
+                                                yield return node;
                                         }
                                     }
                                 }
-                                else
+                                else // v is a regex
                                 {
                                     Regex regv = (Regex)v;
-                                    if (path == "") path = regv.ToString();
-                                    foreach (string k in xobj.children.Keys)
+                                    if (path.Length == 0) path = regv.ToString();
+                                    foreach (KeyValuePair<string, JNode> kv in xobj.children)
                                     {
-                                        JNode val = xobj[k];
-                                        string newpath = path + ',' + new JNode(k, Dtype.STR, 0).ToString();
-                                        if (regv.IsMatch(k))
+                                        string newpath = $"{path},{kv.Key}";
+                                        if (regv.IsMatch(kv.Key))
                                         {
-                                            if (!paths_visited.Contains(newpath))
-                                                yield return new Key_Node(0, val);
-                                            paths_visited.Add(newpath);
+                                            if (!pathsVisited.Contains(newpath))
+                                                yield return kv.Value;
+                                            pathsVisited.Add(newpath);
                                         }
                                         else
                                         {
-                                            foreach (Key_Node ono in multi_idx_func(val, newpath, paths_visited))
+                                            foreach (object node in multiIdxFunc(kv.Value, newpath, pathsVisited))
                                             {
-                                                yield return new Key_Node(0, ono.node);
+                                                yield return node;
                                             }
                                         }
                                     }
@@ -362,185 +518,216 @@ namespace JSON_Tools.JSON_Tools
                             }
                         }
                     }
-                    return x => multi_idx_func(x, "", new HashSet<string>());
+                    return x => multiIdxFunc(x, "", new HashSet<string>());
                 }
-                else
+                else // not recursive
                 {
-                    IEnumerable<Key_Node> multi_idx_func(JNode x)
+                    IEnumerable<object> multiIdxFunc(JNode x)
                     {
                         var xobj = (JObject)x;
                         foreach (object v in children)
                         {
-                            if (v is string)
+                            if (v is string vstr)
                             {
-                                string vstr = (string)v;
                                 if (xobj.children.TryGetValue(vstr, out JNode val))
                                 {
-                                    yield return new Key_Node(vstr, val);
+                                    yield return new KeyValuePair<string, JNode>(vstr, val);
                                 }
                             }
                             else
                             {
-                                foreach (Key_Node ono in ApplyRegexIndex(xobj, (Regex)v))
+                                foreach (KeyValuePair<string, JNode> ono in ApplyRegexIndex(xobj, (Regex)v))
                                 {
                                     yield return ono;
                                 }
                             }
                         }
                     }
-                    return multi_idx_func;
+                    return multiIdxFunc;
                 }
             }
             else
             {
                 // it's a list of ints or slices
-                if (is_recursive)
+                if (isRecursive)
                 {
                     // TODO: decide whether to implement recursive search for slices and indices
                     throw new NotImplementedException("Recursive search for array indices and slices is not implemented");
                 }
-                IEnumerable<Key_Node> multi_idx_func(JNode x)
+                IEnumerable<object> multiIdxFunc(JNode x)
                 {
                     JArray xarr = (JArray)x;
                     foreach (object ind in children)
                     {
-                        if (ind is int?[])
+                        if (ind is int?[] slicer)
                         {
                             // it's a slice, so yield all the JNodes in that slice
-                            foreach (JNode subind in xarr.children.LazySlice((int?[])ind))
+                            foreach (JNode subind in xarr.children.LazySlice(slicer))
                             {
-                                yield return new Key_Node(0, subind);
+                                yield return subind;
                             }
                         }
                         else
                         {
                             int ii = Convert.ToInt32(ind);
-                            if (ii >= xarr.Length) { continue; }
-                            // allow negative indices for consistency with how slicers work
-                            yield return new Key_Node(0, xarr[ii >= 0 ? ii : ii + xarr.Length]);
+                            if (xarr.children.WrappedIndex(ii, out JNode atII))
+                                yield return atII;
                         }
                     }
                 }
-                return multi_idx_func;
+                return multiIdxFunc;
             }
         }
 
-        private IEnumerable<Key_Node> ApplyRegexIndex(JObject obj, Regex regex)
+        /// <summary>
+        /// returns a predicate that evaluates whether a key s matches a varname list<br></br>
+        /// (e.g., ".bar" matches the key "bar",<br></br>
+        /// "[bar, g`baz`]" matches the key "bar" or the regex "baz" 
+        /// </summary>
+        /// <param name="inds"></param>
+        /// <returns></returns>
+        /// <exception cref="RemesPathException"></exception>
+        private Predicate<string> VarnameListMatcher(List<object> inds)
         {
-            foreach (string ok in obj.children.Keys)
+            var keys = new HashSet<string>();
+            var regexes = new List<Regex>();
+            foreach (object obj in inds)
             {
-                JNode val = obj[ok];
-                if (regex.IsMatch(ok))
+                if (obj is string s)
+                    keys.Add(s);
+                else
+                    regexes.Add((Regex)obj);
+            }
+            int keyCount = keys.Count;
+            int rexCount = regexes.Count;
+            string firstKey = keyCount == 0 ? null : keys.ToArray()[0];
+            Regex firstRegex = rexCount == 0 ? null : regexes[0];
+            if (keyCount > 0)
+            {
+                if (rexCount > 0)
                 {
-                    yield return new Key_Node(ok, val);
+                    if (keyCount == 1)
+                    {
+                        if (rexCount == 1)
+                            return s => (s == firstKey) || firstRegex.IsMatch(s);
+                        else 
+                            return s => (s == firstKey) || regexes.Any(rex => rex.IsMatch(s));
+                    }
+                    else if (rexCount == 1)
+                        return s => keys.Contains(s) || firstRegex.IsMatch(s);
+                    else // multiple keys, multiple regexes
+                        return s => keys.Contains(s) || regexes.Any(rex => rex.IsMatch(s));
+                }
+                else // multiple keys, no regexes
+                    return keys.Contains;
+            }
+            else if (rexCount > 0)
+            {
+                if (rexCount == 1) // one regex, no keys
+                    return firstRegex.IsMatch;
+                return s => regexes.Any(rex => rex.IsMatch(s));
+            }
+            else
+                throw new RemesPathException("Negated indexer with no strings or regexes"); // should never happen due to earlier checks
+        }
+
+        private Func<JNode, IEnumerable<object>> ApplyNegatedVarnameList(List<object> inds)
+        {
+            //if (isRecursive)
+            //{
+            //    IEnumerable<JNode> negatedVarnameListFunc(JNode node)
+            //    {
+            //        if (node is JArray arr)
+            //        {
+            //            foreach (JNode child in arr.children)
+            //            {
+            //                foreach (JNode subchild in negatedVarnameListFunc(child))
+            //                    yield return subchild;
+            //            }
+            //        }
+            //        else if (node is JObject obj)
+            //        {
+            //            foreach (KeyValuePair<string, JNode> kv in obj.children)
+            //            {
+            //                if (!matcher(kv.Key))
+            //                    yield return kv.Value;
+            //            }
+            //        }
+            //    }
+            //    return negatedVarnameListFunc;
+            //}
+            //else
+            //{
+            Predicate<string> matcher = VarnameListMatcher(inds);
+            IEnumerable<object> negatedVarnameListFunc(JNode node)
+            {
+                var obj = (JObject)node;
+                foreach (KeyValuePair<string, JNode> kv in obj.children)
+                {
+                    if (!matcher(kv.Key))
+                        yield return kv;
+                }
+            };
+            return negatedVarnameListFunc;
+            //}
+        }
+
+        private int[] IndicesMatchingNegatedSlicerList(List<object> inds, int length)
+        {
+            if (length == 0)
+                return new int[0];
+            var allIndices = new int[length];
+            for (int ii = 0; ii < length; ii++)
+                allIndices[ii] = ii;
+            var potentialIndices = new HashSet<int>(allIndices);
+            foreach (object ind in inds)
+            {
+                if (ind is int ii)
+                    potentialIndices.Remove(ii < 0 ? ii + length : ii);
+                else if (ind is int?[] slicer)
+                    potentialIndices.ExceptWith(allIndices.LazySlice(slicer));
+            }
+            var matchedIndices = potentialIndices.ToArray();
+            Array.Sort(matchedIndices);
+            return matchedIndices;
+        }
+
+        private Func<JNode, IEnumerable<JNode>> ApplyNegatedSlicerList(List<object> inds)
+        {
+            IEnumerable<JNode> negatedSlicerListFunc(JNode node)
+            {
+                JArray arr = (JArray)node;
+                foreach (int ii in IndicesMatchingNegatedSlicerList(inds, arr.Length))
+                    yield return arr.children[ii];
+            }
+            return negatedSlicerListFunc;
+        }
+
+        private IEnumerable<KeyValuePair<string, JNode>> ApplyRegexIndex(JObject obj, Regex regex)
+        {
+            foreach (KeyValuePair<string, JNode> kv in obj.children)
+            {
+                if (regex.IsMatch(kv.Key))
+                {
+                    yield return kv;
                 }
             }
         }
 
-        private Func<JNode, IEnumerable<Key_Node>> ApplyBooleanIndex(JNode inds)
+        private IEnumerable<object> ApplyStarIndexer(JNode x)
         {
-            IEnumerable<Key_Node> bool_idxr_func(JNode x)
+            if (x is JObject xobj)
             {
-                JNode newinds = inds;
-                if (inds is CurJson)
+                foreach (KeyValuePair<string, JNode> kv in xobj.children)
                 {
-                    CurJson jinds = (CurJson)inds;
-                    Func<JNode, JNode> indfunc = jinds.function;
-                    newinds = indfunc(x);
-                }
-                if (newinds.type == Dtype.BOOL)
-                {
-                    // to allow for boolean indices that filter on the entire object/array, like @.bar == @.foo or sum(@) == 0
-                    if ((bool)newinds.value)
-                    {
-                        if (x.type == Dtype.OBJ)
-                        {
-                            JObject xobj = (JObject)x;
-                            foreach (string key in xobj.children.Keys)
-                            {
-                                yield return new Key_Node(key, xobj[key]);
-                            }
-                        }
-                        else if (x.type == Dtype.ARR)
-                        {
-                            JArray xarr = (JArray)x;
-                            for (int ii = 0; ii < xarr.Length; ii++)
-                            {
-                                yield return new Key_Node(ii, xarr[ii]);
-                            }
-                        }
-                    }
-                    // if the condition is false, yield nothing
-                    yield break;
-                }
-                else if (newinds.type == Dtype.OBJ)
-                {
-                    JObject iobj = (JObject)newinds;
-                    JObject xobj= (JObject)x;
-                    if (iobj.Length != xobj.Length)
-                    {
-                        throw new VectorizedArithmeticException($"bool index length {iobj.Length} does not match object/array length {xobj.Length}.");
-                    }
-                    foreach (string key in xobj.children.Keys)
-                    {
-                        JNode xval = xobj[key];
-                        bool i_has_key = iobj.children.TryGetValue(key, out JNode ival);
-                        if (i_has_key)
-                        {
-                            if (ival.type != Dtype.BOOL)
-                            {
-                                throw new VectorizedArithmeticException("bool index contains non-booleans");
-                            }
-                            if ((bool)ival.value)
-                            {
-                                yield return new Key_Node(key, xval);
-                            }
-                        }
-                    }
-                    yield break;
-                }
-                else if (newinds.type == Dtype.ARR)
-                {
-                    JArray iarr = (JArray)newinds;
-                    JArray xarr = (JArray)x;
-                    if (iarr.Length != xarr.Length)
-                    {
-                        throw new VectorizedArithmeticException($"bool index length {iarr.Length} does not match object/array length {xarr.Length}.");
-                    }
-                    for (int ii = 0; ii < xarr.Length; ii++)
-                    {
-                        JNode ival = iarr[ii];
-                        JNode xval = xarr[ii];
-                        if (ival.type != Dtype.BOOL)
-                        {
-                            throw new VectorizedArithmeticException("bool index contains non-booleans");
-                        }
-                        if ((bool)ival.value)
-                        {
-                            yield return new Key_Node(ii, xval);
-                        }
-                    }
-                    yield break;
-                }
-            }
-            return bool_idxr_func;
-        }
-
-        private IEnumerable<Key_Node> ApplyStarIndexer(JNode x)
-        {
-            if (x.type == Dtype.OBJ)
-            {
-                var xobj = (JObject)x;
-                foreach (string key in xobj.children.Keys)
-                {
-                    yield return new Key_Node(key, xobj[key]);
+                    yield return kv;
                 }
                 yield break;
             }
             var xarr = (JArray)x;
             for (int ii = 0; ii < xarr.Length; ii++)
             {
-                yield return new Key_Node(ii, xarr[ii]);
+                yield return xarr[ii];
             }
         }
 
@@ -553,7 +740,7 @@ namespace JSON_Tools.JSON_Tools
         /// </summary>
         /// <param name="node"></param>
         /// <returns></returns>
-        private static IEnumerable<Key_Node> RecursivelyFlattenIterable(JNode node)
+        private static IEnumerable<object> RecursivelyFlattenIterable(JNode node)
         {
             if (node is JObject obj)
             {
@@ -561,12 +748,12 @@ namespace JSON_Tools.JSON_Tools
                 {
                     if ((val.type & Dtype.ITERABLE) == 0)
                     {
-                        yield return new Key_Node(0, val);
+                        yield return val;
                     }
                     else
                     {
-                        foreach (Key_Node sub_kn in RecursivelyFlattenIterable(val))
-                            yield return sub_kn;
+                        foreach (object child in RecursivelyFlattenIterable(val))
+                            yield return child;
                     }
                 }
             }
@@ -576,722 +763,657 @@ namespace JSON_Tools.JSON_Tools
                 {
                     if ((val.type & Dtype.ITERABLE) == 0)
                     {
-                        yield return new Key_Node(0, val);
+                        yield return val;
                     }
                     else
                     {
-                        foreach (Key_Node sub_kn in RecursivelyFlattenIterable(val))
-                            yield return sub_kn;
+                        foreach (object child in RecursivelyFlattenIterable(val))
+                            yield return child;
                     }
                 }
             }
         }
 
-        /// <summary>
-        /// return 2 if x is not an object or array<br></br>
-        /// If it is an object or array:<br></br> 
-        /// return 1 if its length is 0.<br></br>
-        /// else return 0.
-        /// </summary>
-        /// <param name="x"></param>
-        /// <returns></returns>
-        private static int ObjectOrArrayEmpty(JNode x)
-        {
-            if (x.type == Dtype.OBJ) { return (((JObject)x).Length == 0) ? 1 : 0; }
-            if (x.type == Dtype.ARR) { return (((JArray)x).Length == 0) ? 1 : 0; }
-            return 2;
-        }
-
         private Func<JNode, JNode> ApplyIndexerList(List<IndexerFunc> indexers)
         {
-            JNode idxr_list_func(JNode obj, List<IndexerFunc> idxrs)
+            JNode idxrListFunc(JNode obj, List<IndexerFunc> idxrs, int ii)
             {
-                IndexerFunc ix = idxrs[0];
+                IndexerFunc ix = idxrs[ii];
                 var inds = ix.idxr(obj).GetEnumerator();
                 // IEnumerator<T>.MoveNext returns a bool indicating if the enumerator has passed the end of the collection
                 if (!inds.MoveNext())
                 {
-                    // the IndexerFunc couldn't find
-                    if (ix.is_dict)
+                    // the IndexerFunc couldn't find anything
+                    if (ix.isDict)
                     {
                         return new JObject();
                     }
                     return new JArray();
                 }
-                Key_Node k1v1 = inds.Current;
-                object k1 = k1v1.obj;
-                JNode v1 = k1v1.node;
-                Key_Node kv;
-                object k;
-                JNode v;
-                bool is_dict = (ix.is_dict || k1 is string) && !ix.is_recursive;
-                var arr = new List<JNode>();
-                var dic = new Dictionary<string, JNode>();
-                if (idxrs.Count == 1)
+                object current = inds.Current;
+                bool isDict = current is KeyValuePair<string, JNode>;
+                List<JNode> arr;
+                Dictionary<string, JNode> dic;
+                if (ii == idxrs.Count - 1)
                 {
-                    if (ix.has_one_option)
+                    if (ix.hasOneOption)
                     {
                         // return a scalar rather than an iterable with one element
-                        return v1;
+                        if (current is KeyValuePair<string, JNode> kv)
+                            return kv.Value;
+                        return (JNode)current;
                     }
-                    if (is_dict)
+                    if (isDict)
                     {
-                        dic = new Dictionary<string, JNode>();
-                        dic[(string)k1] = v1;
+                        var kv = (KeyValuePair<string, JNode>)current;
+                        dic = new Dictionary<string, JNode>
+                        {
+                            [kv.Key] = kv.Value
+                        };
                         while (inds.MoveNext())
                         {
-                            kv = inds.Current;
-                            dic[(string)kv.obj] = kv.node;
+                            kv = (KeyValuePair<string, JNode>)inds.Current;
+                            dic[kv.Key] = kv.Value;
                         }
-                        return new JObject(0, dic);
+                        return new JObject(obj.position, dic);
                     }
-                    arr = new List<JNode>();
-                    arr.Add(v1);
+                    arr = new List<JNode> { (JNode)current };
                     while (inds.MoveNext())
                     {
-                        arr.Add(inds.Current.node);
+                        arr.Add((JNode)inds.Current);
                     }
-                    return new JArray(0, arr);
+                    return new JArray(obj.position, arr);
                 }
-                var remaining_idxrs = new List<IndexerFunc>();
-                for (int ii = 1; ii < idxrs.Count; ii++)
-                    remaining_idxrs.Add(idxrs[ii]);
-                if (ix.is_projection)
+                if (ix.isProjection)
                 {
-                    if (is_dict)
+                    if (isDict)
                     {
-                        dic = new Dictionary<string, JNode>();
-                        dic[(string)k1] = v1;
+                        var kv = (KeyValuePair<string, JNode>)current;
+                        dic = new Dictionary<string, JNode>
+                        {
+                            [kv.Key] = kv.Value
+                        };
                         while (inds.MoveNext())
                         {
-                            kv = inds.Current;
-                            dic[(string)kv.obj] = kv.node;
+                            kv = (KeyValuePair<string, JNode>)inds.Current;
+                            dic[kv.Key] = kv.Value;
                         }
                         // recursively search this projection using the remaining indexers
-                        return idxr_list_func(new JObject(0, dic), remaining_idxrs);
+                        return idxrListFunc(new JObject(0, dic), idxrs, ii + 1);
                     }
-                    arr = new List<JNode>();
-                    arr.Add(v1);
+                    else if (ix.hasOneOption)
+                    {
+                        return idxrListFunc((JNode)inds.Current, idxrs, ii + 1);
+                    }
+                    arr = new List<JNode> { (JNode)current };
                     while (inds.MoveNext())
                     {
-                        arr.Add(inds.Current.node);
+                        arr.Add((JNode)inds.Current);
                     }
-                    return idxr_list_func(new JArray(0, arr), remaining_idxrs);
+                    return idxrListFunc(new JArray(0, arr), idxrs, ii + 1);
                 }
-                JNode v1_subdex = idxr_list_func(v1, remaining_idxrs);
-                if (ix.has_one_option)
+                JNode v1_subdex;
+                if (current is JNode node)
+                {
+                    v1_subdex = idxrListFunc(node, idxrs, ii + 1);
+                }
+                else
+                {
+                    node = ((KeyValuePair<string, JNode>)current).Value;
+                    v1_subdex = idxrListFunc(node, idxrs, ii + 1);
+                }
+                if (ix.hasOneOption)
                 {
                     return v1_subdex;
                 }
-                int is_empty = ObjectOrArrayEmpty(v1_subdex);
-                if (is_dict)
+                int isEmpty = Binop.ObjectOrArrayEmpty(v1_subdex);
+                if (isDict)
                 {
+                    var kv = (KeyValuePair<string, JNode>)current;
                     dic = new Dictionary<string, JNode>();
-                    if (is_empty != 1)
+                    if (isEmpty != 1)
                     {
-                        dic[(string)k1] = v1_subdex;
+                        dic[kv.Key] = v1_subdex;
                     }
                     while (inds.MoveNext())
                     {
-                        k = inds.Current.obj;
-                        v = inds.Current.node;
-                        JNode subdex = idxr_list_func(v, remaining_idxrs);
-                        is_empty = ObjectOrArrayEmpty(subdex);
-                        if (is_empty != 1)
+                        kv = (KeyValuePair<string, JNode>)inds.Current;
+                        JNode subdex = idxrListFunc(kv.Value, idxrs, ii + 1);
+                        isEmpty = Binop.ObjectOrArrayEmpty(subdex);
+                        if (isEmpty != 1)
                         {
-                            dic[(string)k] = subdex;
+                            dic[kv.Key] = subdex;
                         }
                     }
-                    return new JObject(0, dic);
+                    return new JObject(obj.position, dic);
                 }
                 // obj is a list iterator
                 arr = new List<JNode>();
-                if (is_empty != 1)
+                if (isEmpty != 1)
                 {
                     arr.Add(v1_subdex);
                 }
                 while (inds.MoveNext())
                 {
-                    v = inds.Current.node;
-                    JNode subdex = idxr_list_func(v, remaining_idxrs);
-                    is_empty = ObjectOrArrayEmpty(subdex);
-                    if (is_empty != 1)
+                    var v = (JNode)inds.Current;
+                    JNode subdex = idxrListFunc(v, idxrs, ii + 1);
+                    isEmpty = Binop.ObjectOrArrayEmpty(subdex);
+                    if (isEmpty != 1)
                     {
                         arr.Add(subdex);
                     }
                 }
-                return new JArray(0, arr);
+                return new JArray(obj.position, arr);
             }
-            return (JNode obj) => idxr_list_func(obj, indexers);
-        }
-
-        #endregion
-        #region BINOP_FUNCTIONS
-        private JNode BinopTwoJsons(Binop b, JNode left, JNode right)
-        {
-            if (ObjectOrArrayEmpty(right) == 2)
-            {
-                if (ObjectOrArrayEmpty(left) == 2)
-                {
-                    return b.Call(left, right);
-                }
-                return BinopJsonScalar(b, left, right);
-            }
-            if (ObjectOrArrayEmpty(left) == 2)
-            {
-                return BinopScalarJson(b, left, right);
-            }
-            if (right.type == Dtype.OBJ)
-            {
-                var dic = new Dictionary<string, JNode>();
-                var robj = (JObject)right;
-                var lobj = (JObject)left;
-                if (robj.Length != lobj.Length)
-                {
-                    throw new VectorizedArithmeticException("Tried to apply a binop to two dicts with different sets of keys");
-                }
-                foreach (string key in robj.children.Keys)
-                {
-                    JNode right_val = robj[key];
-                    bool left_has_key = lobj.children.TryGetValue(key, out JNode left_val);
-                    if (!left_has_key)
-                    {
-                        throw new VectorizedArithmeticException("Tried to apply a binop to two dicts with different sets of keys");
-                    }
-                    dic[key] = b.Call(left_val, right_val);
-                }
-                return new JObject(0, dic);
-            }
-            var arr = new List<JNode>();
-            var rarr = (JArray)right;
-            var larr = (JArray)left;
-            if (larr.Length != rarr.Length)
-            {
-                throw new VectorizedArithmeticException("Tried to perform vectorized arithmetic on two arrays of unequal length");
-            }
-            for (int ii = 0; ii < rarr.Length; ii++)
-            {
-                arr.Add(b.Call(larr[ii], rarr[ii]));
-            }
-            return new JArray(0, arr);
-        }
-
-        private JNode BinopJsonScalar(Binop b, JNode left, JNode right)
-        {
-            if (left.type == Dtype.OBJ)
-            {
-                var dic = new Dictionary<string, JNode>();
-                var lobj = (JObject)left;
-                foreach (string key in lobj.children.Keys)
-                {
-                    dic[key] = b.Call(lobj[key], right);
-                }
-                return new JObject(0, dic);
-            }
-            var arr = new List<JNode>();
-            var larr = (JArray)left;
-            for (int ii = 0; ii < larr.Length; ii++)
-            {
-                arr.Add(b.Call(larr[ii], right));
-            }
-            return new JArray(0, arr);
-        }
-
-        private JNode BinopScalarJson(Binop b, JNode left, JNode right)
-        {
-            if (right.type == Dtype.OBJ)
-            {
-                var dic = new Dictionary<string, JNode>();
-                var robj = (JObject)right;
-                foreach (string key in robj.children.Keys)
-                {
-                    dic[key] = b.Call(left, robj[key]);
-                }
-                return new JObject(0, dic);
-            }
-            var arr = new List<JNode>();
-            var rarr = (JArray)right;
-            for (int ii = 0; ii < rarr.Length; ii++)
-            {
-                arr.Add(b.Call(left, rarr[ii]));
-            }
-            return new JArray(0, arr);
-        }
-
-        /// <summary>
-        /// For a given binop and the types of two JNodes, determines the output's type.<br></br>
-        /// Raises a RemesPathException if the types are inappropriate for that Binop.<br></br>
-        /// EXAMPLES<br></br>
-        /// BinopOutType(Binop.BINOPS["+"], Dtype.STR, Dtype.STR) -> Dtype.STR<br></br>
-        /// BinopOutType(Binop.BINOPS["**"], Dtype.STR, Dtype.INT) -> throws RemesPathException<br></br>
-        /// BinopOutType(Binop.BINOPS["*"], Dtype.INT, Dtype.FLOAT) -> Dtype.FLOAT
-        /// </summary>
-        /// <param name="b"></param>
-        /// <param name="ltype"></param>
-        /// <param name="rtype"></param>
-        /// <returns></returns>
-        /// <exception cref="RemesPathException"></exception>
-        private Dtype BinopOutType(Binop b, Dtype ltype, Dtype rtype)
-        {
-            if (ltype == Dtype.UNKNOWN || rtype == Dtype.UNKNOWN) { return Dtype.UNKNOWN; }
-            if (ltype == Dtype.OBJ || rtype == Dtype.OBJ)
-            {
-                if (ltype == Dtype.ARR || rtype == Dtype.ARR)
-                {
-                    throw new RemesPathException("Cannot have a function of an array and an object");
-                }
-                return Dtype.OBJ;
-            }
-            if (ltype == Dtype.ARR || rtype == Dtype.ARR)
-            {
-                if (ltype == Dtype.OBJ || rtype == Dtype.OBJ)
-                {
-                    throw new RemesPathException("Cannot have a function of an array and an object");
-                }
-                return Dtype.ARR;
-            }
-            string name = b.name;
-            if (Binop.BOOLEAN_BINOPS.Contains(name)) { return Dtype.BOOL; }
-            if ((ltype & Dtype.NUM) == 0 && (rtype & Dtype.NUM) == 0)
-            {
-                if (name == "+")
-                {
-                    if (ltype == Dtype.STR || rtype == Dtype.STR)
-                    {
-                        if (rtype != Dtype.STR || ltype != Dtype.STR)
-                        {
-                            throw new RemesPathException("Cannot add non-string to string");
-                        }
-                        return Dtype.STR;
-                    }
-                }
-                throw new RemesPathException($"Invalid argument types {JNode.FormatDtype(ltype)}" +
-                                            $" and {JNode.FormatDtype(rtype)} for binop {name}");
-            }
-            if (Binop.BITWISE_BINOPS.Contains(name)) // ^, & , |
-            {
-                // return ints if acting on two ints, bools when acting on two bools
-                if (ltype == Dtype.INT && rtype == Dtype.INT)
-                {
-                    return Dtype.INT;
-                }
-                if (ltype == Dtype.BOOL && rtype == Dtype.BOOL)
-                    return Dtype.BOOL;
-                throw new RemesPathException($"Incompatible types {JNode.FormatDtype(ltype)}" +
-                                            $" and {JNode.FormatDtype(rtype)} for bitwise binop {name}");
-            }
-            // it's a polymorphic binop - one of -, +, *, %
-            if (rtype == Dtype.BOOL && ltype == Dtype.BOOL)
-            {
-                throw new RemesPathException($"Can't do arithmetic operation {name} on two bools");
-            }
-            if (name == "//") { return Dtype.INT; }
-            if (Binop.FLOAT_RETURNING_BINOPS.Contains(name)) { return Dtype.FLOAT; } 
-            // division and exponentiation always give doubles
-            if (((rtype & Dtype.INT) != 0) && ((ltype & Dtype.INT) != 0))
-            {
-                return rtype & ltype;
-            }
-            return Dtype.FLOAT;
-        }
-
-        /// <summary>
-        /// Handles all possible argument combinations for a Binop being called on two JNodes:<br></br>
-        /// iterable and iterable, iterable and scalar, iterable that's a function of the current JSON and scalar 
-        /// that's not, etc.<br></br>
-        /// Throws a RemesPathException if an invalid combination of types is chosen.
-        /// </summary>
-        /// <param name="b"></param>
-        /// <returns></returns>
-        private JNode ResolveBinop(Binop b, JNode left, JNode right)
-        {
-            bool left_itbl = (left.type & Dtype.ITERABLE) != 0;
-            bool right_itbl = (right.type & Dtype.ITERABLE) != 0;
-            Dtype out_type = BinopOutType(b, left.type, right.type);
-            if (left is CurJson)
-            {
-                CurJson lcur = (CurJson)left;
-                if (right is CurJson)
-                {
-                    // both are functions of the current JSON
-                    CurJson rcur = (CurJson)right;
-                    if (left_itbl)
-                    {
-                        if (right_itbl)
-                        {
-                            // they're both iterables or unknown type
-                            return new CurJson(out_type, (JNode x) => BinopTwoJsons(b, lcur.function(x), rcur.function(x)));
-                        }
-                        // only left is an iterable and unknown type
-                        return new CurJson(out_type, (JNode x) => BinopTwoJsons(b, lcur.function(x), rcur.function(x)));
-                    }
-                    if (right_itbl)
-                    {
-                        // right is iterable or unknown, but left is not iterable
-                        return new CurJson(out_type, (JNode x) => BinopTwoJsons(b, lcur.function(x), rcur.function(x)));
-                    }
-                    // they're both scalars
-                    return new CurJson(out_type, (JNode x) => b.Call(lcur.function(x), rcur.function(x)));
-                }
-                // right is not a function of the current JSON, but left is
-                if (left_itbl)
-                {
-                    if (right_itbl)
-                    {
-                        return new CurJson(out_type, (JNode x) => BinopTwoJsons(b, lcur.function(x), right));
-                    }
-                    return new CurJson(out_type, (JNode x) => BinopTwoJsons(b, lcur.function(x), right));
-                }
-                if (right_itbl)
-                {
-                    return new CurJson(out_type, (JNode x) => BinopTwoJsons(b, lcur.function(x), right));
-                }
-                return new CurJson(out_type, (JNode x) => b.Call(lcur.function(x), right));
-            }
-            if (right is CurJson)
-            {
-                // left is not a function of the current JSON, but right is
-                CurJson rcur = (CurJson)right;
-                if (left_itbl)
-                {
-                    if (right_itbl)
-                    {
-                        return new CurJson(out_type, (JNode x) => BinopTwoJsons(b, left, rcur.function(x)));
-                    }
-                    return new CurJson(out_type, (JNode x) => BinopTwoJsons(b, left, rcur.function(x)));
-                }
-                if (right_itbl)
-                {
-                    return new CurJson(out_type, (JNode x) => BinopTwoJsons(b, left, rcur.function(x)));
-                }
-                return new CurJson(out_type, (JNode x) => b.Call(left, rcur.function(x)));
-            }
-            // neither is a function of the current JSON
-            if (left_itbl)
-            {
-                if (right_itbl)
-                {
-                    return BinopTwoJsons(b, left, right);
-                }
-                return BinopJsonScalar(b, left, right);
-            }
-            if (right_itbl)
-            {
-                return BinopScalarJson(b, left, right);
-            }
-            return b.Call(left, right);
-        }
-
-        /// <summary>
-        /// Resolves a binop where left and right may also be binops, by recursively descending to left and right<br></br>
-        /// and resolving the leaf binops.
-        /// </summary>
-        /// <param name="b"></param>
-        /// <returns></returns>
-        private JNode ResolveBinopTree(BinopWithArgs b)
-        {
-            object left = b.left;
-            object right = b.right;
-            if (left is BinopWithArgs)
-            {
-                left = ResolveBinopTree((BinopWithArgs)left);
-            }
-            if (right is BinopWithArgs)
-            {
-                right = ResolveBinopTree((BinopWithArgs)right);
-            }
-            return ResolveBinop(b.binop, (JNode)left, (JNode)right);
+            return (JNode obj) => idxrListFunc(obj, indexers, 0);
         }
 
         #endregion
         #region APPLY_ARG_FUNCTION
         private JNode ApplyArgFunction(ArgFunctionWithArgs func)
         {
+            if (func.function.conditionalExecution)
+            {
+                // need to add a CurJson after all the normal args
+                // so that the function will have a pointer to the current json,
+                // and all instances of the @ symbol can be resolved
+                func.args.Add(new CurJson());
+            }
+            if (func.function.maxArgs == 0)
+            {
+                // paramterless function like rand()
+                if (!func.function.isDeterministic)
+                    return new CurJson(func.function.type, blah => func.function.Call(func.args));
+                return func.function.Call(func.args);
+            }
+            func.function.argsTransform?.Transform(func.args);
             JNode x = func.args[0];
-            bool other_callables = false;
-            List<JNode> other_args = new List<JNode>(func.args.Count - 1);
+            bool otherCallables = false;
+            List<JNode> otherArgs = new List<JNode>(func.args.Count - 1);
+            bool[] argsCanBeFunctions = new bool[func.args.Count - 1]; // for each otherArgs index, whether that arg can be a function
+            bool firstArgCanBeFunction = (func.function.TypeOptions(0) & Dtype.FUNCTION) != 0;
             for (int ii = 0; ii < func.args.Count - 1; ii++)
             {
                 JNode arg = func.args[ii + 1];
-                if (arg is CurJson) { other_callables = true; }
-                other_args.Add(arg);
+                if (arg is CurJson) { otherCallables = true; }
+                argsCanBeFunctions[ii] = (func.function.TypeOptions(ii + 1) & Dtype.FUNCTION) != 0;
+                otherArgs.Add(arg);
             }
-            // vectorized functions take on the type of the iterable they're vectorized across, but they have a set type
-            // when operating on scalars (e.g. s_len returns an array when acting on an array and a dict
-            // when operating on a dict, but s_len always returns an int when acting on a single string)
-            // non-vectorized functions always return the same type
-            Dtype out_type = func.function.is_vectorized && ((x.type & Dtype.ITERABLE) != 0) ? x.type : func.function.type;
-            List<JNode> all_args = new List<JNode>(func.args.Count);
+            if (func.function.conditionalExecution)
+                argsCanBeFunctions[argsCanBeFunctions.Length - 1] = false; // if conditional execution, last arg is CurJson
+                                                                           // that must be called before argfunction is evaluated
+            Dtype outType = func.function.OutputType(x);
+            List<JNode> allArgs = new List<JNode>(func.args.Count);
             foreach (var a in func.args)
-                all_args.Add(null);
-            if (func.function.is_vectorized)
+                allArgs.Add(null);
+            if (func.function.isVectorized)
             {
-                if (x is CurJson)
+                if (x is CurJson xcur)
                 {
-                    CurJson xcur = (CurJson)x;
-                    if (other_callables)
+                    if (otherCallables)
                     {
                         // x is a function of the current JSON, as is at least one other argument
-                        JNode arg_outfunc(JNode inp)
+                        JNode argOutfunc(JNode inp)
                         {
-                            var itbl = xcur.function(inp);
-                            for (int ii = 0; ii < other_args.Count; ii++)
+                            var itbl = firstArgCanBeFunction ? xcur : xcur.function(inp);
+                            for (int ii = 0; ii < otherArgs.Count; ii++)
                             {
-                                JNode other_arg = other_args[ii];
-                                all_args[ii + 1] = other_arg is CurJson ? ((CurJson)other_arg).function(inp) : other_arg;
+                                JNode otherArg = otherArgs[ii];
+                                allArgs[ii + 1] = (otherArg is CurJson cjoa && !argsCanBeFunctions[ii]) ? cjoa.function(inp) : otherArg;
                             }
-                            if (itbl.type == Dtype.OBJ)
+                            if (itbl is JObject otbl)
                             {
-                                var dic = new Dictionary<string, JNode>();
-                                var otbl = (JObject)itbl;
-                                foreach (string key in otbl.children.Keys)
+                                var dic = new Dictionary<string, JNode>(otbl.Length);
+                                foreach (KeyValuePair<string, JNode> okv in otbl.children)
                                 {
-                                    all_args[0] = otbl[key];
-                                    dic[key] = func.function.Call(all_args);
+                                    allArgs[0] = okv.Value;
+                                    dic[okv.Key] = func.function.Call(allArgs);
                                 }
                                 return new JObject(0, dic);
                             }
-                            else if (itbl.type == Dtype.ARR)
+                            else if (itbl is JArray atbl)
                             {
                                 var arr = new List<JNode>();
-                                var atbl = (JArray)itbl;
                                 foreach (JNode val in atbl.children)
                                 {
-                                    all_args[0] = val;
-                                    arr.Add(func.function.Call(all_args));
+                                    allArgs[0] = val;
+                                    arr.Add(func.function.Call(allArgs));
                                 }
                                 return new JArray(0, arr);
                             }
                             // x is a scalar function of the current JSON, so we just call the function on that scalar
                             // and the other args
-                            all_args[0] = itbl;
-                            return func.function.Call(all_args);
+                            allArgs[0] = itbl;
+                            return func.function.Call(allArgs);
                         }
-                        return new CurJson(out_type, arg_outfunc);
+                        return new CurJson(outType, argOutfunc);
                     }
                     else
                     {
                         // there are no other functions of the current JSON; the first argument is the only one
                         // this means that all the other args are fixed and can be used as is
-                        for (int ii = 0; ii < other_args.Count; ii++)
+                        for (int ii = 0; ii < otherArgs.Count; ii++)
                         {
-                            JNode other_arg = other_args[ii];
-                            all_args[ii + 1] = other_arg;
+                            JNode otherArg = otherArgs[ii];
+                            allArgs[ii + 1] = otherArg;
                         }
-                        JNode arg_outfunc(JNode inp)
+                        JNode argOutfunc(JNode inp)
                         {
                             
-                            var itbl = xcur.function(inp);
-                            if (itbl.type == Dtype.OBJ)
+                            var itbl = firstArgCanBeFunction ? xcur : xcur.function(inp);
+                            if (itbl is JObject otbl)
                             {
-                                var dic = new Dictionary<string, JNode>();
-                                var otbl = (JObject)itbl;
-                                foreach (string key in otbl.children.Keys)
+                                var dic = new Dictionary<string, JNode>(otbl.Length);
+                                foreach (KeyValuePair<string, JNode> okv in otbl.children)
                                 {
-                                    all_args[0] = otbl[key];
-                                    dic[key] = func.function.Call(all_args);
+                                    allArgs[0] = okv.Value;
+                                    dic[okv.Key] = func.function.Call(allArgs);
                                 }
                                 return new JObject(0, dic);
                             }
-                            else if (itbl.type == Dtype.ARR)
+                            else if (itbl is JArray atbl)
                             {
                                 var arr = new List<JNode>();
-                                var atbl = (JArray)itbl;
                                 foreach (JNode val in atbl.children)
                                 {
-                                    all_args[0] = val;
-                                    arr.Add(func.function.Call(all_args));
+                                    allArgs[0] = val;
+                                    arr.Add(func.function.Call(allArgs));
                                 }
                                 return new JArray(0, arr);
                             }
                             // x is a scalar function of the input
-                            all_args[0] = itbl;
-                            return func.function.Call(all_args);
+                            allArgs[0] = itbl;
+                            return func.function.Call(allArgs);
                         }
-                        return new CurJson(out_type, arg_outfunc);
+                        return new CurJson(outType, argOutfunc);
                     }
                 }
-                if (other_callables)
+                if (otherCallables)
                 {
                     // at least one other argument is a function of the current JSON, but not the first argument
                     if (x.type == Dtype.OBJ)
                     {
                         JObject xobj = (JObject)x;
-                        JNode arg_outfunc(JNode inp)
+                        JNode argOutfunc(JNode inp)
                         {
-                            var dic = new Dictionary<string, JNode>();
-                            for (int ii = 0; ii < other_args.Count; ii++)
+                            var dic = new Dictionary<string, JNode>(xobj.Length);
+                            for (int ii = 0; ii < otherArgs.Count; ii++)
                             {
-                                JNode other_arg = other_args[ii];
-                                all_args[ii + 1] = other_arg is CurJson ? ((CurJson)other_arg).function(inp) : other_arg;
+                                JNode otherArg = otherArgs[ii];
+                                allArgs[ii + 1] = (otherArg is CurJson cjoa && !argsCanBeFunctions[ii]) ? cjoa.function(inp) : otherArg;
                             }
-                            foreach (string key in xobj.children.Keys)
+                            foreach (KeyValuePair<string, JNode> xkv in xobj.children)
                             {
-                                all_args[0] = xobj[key];
-                                dic[key] = func.function.Call(all_args);
+                                allArgs[0] = xkv.Value;
+                                dic[xkv.Key] = func.function.Call(allArgs);
                             }
                             return new JObject(0, dic);
                         }
-                        return new CurJson(out_type, arg_outfunc);
+                        return new CurJson(outType, argOutfunc);
                     }
                     else if (x.type == Dtype.ARR)
                     {
                         // x is an array and at least one other argument is a function of the current JSON
                         var xarr = (JArray)x;
-                        JNode arg_outfunc(JNode inp)
+                        JNode argOutfunc(JNode inp)
                         {
                             var arr = new List<JNode>();
-                            for (int ii = 0; ii < other_args.Count; ii++)
+                            for (int ii = 0; ii < otherArgs.Count; ii++)
                             {
-                                JNode other_arg = other_args[ii];
-                                all_args[ii + 1] = other_arg is CurJson ? ((CurJson)other_arg).function(inp) : other_arg;
+                                JNode otherArg = otherArgs[ii];
+                                allArgs[ii + 1] = (otherArg is CurJson cjoa && !argsCanBeFunctions[ii]) ? cjoa.function(inp) : otherArg;
                             }
                             foreach (JNode val in xarr.children)
                             {
-                                all_args[0] = val;
-                                arr.Add(func.function.Call(all_args));
+                                allArgs[0] = val;
+                                arr.Add(func.function.Call(allArgs));
                             }
                             return new JArray(0, arr);
                         }
-                        return new CurJson(out_type, arg_outfunc);
+                        return new CurJson(outType, argOutfunc);
                     }
                     else
                     {
                         // x is not iterable, and at least one other arg is a function of the current JSON
-                        JNode arg_outfunc(JNode inp)
+                        JNode argOutfunc(JNode inp)
                         {
-                            for (int ii = 0; ii < other_args.Count; ii++)
+                            for (int ii = 0; ii < otherArgs.Count; ii++)
                             {
-                                JNode other_arg = other_args[ii];
-                                all_args[ii + 1] = other_arg is CurJson ? ((CurJson)other_arg).function(inp) : other_arg;
+                                JNode otherArg = otherArgs[ii];
+                                allArgs[ii + 1] = (otherArg is CurJson cjoa && !argsCanBeFunctions[ii]) ? cjoa.function(inp) : otherArg;
                             }
-                            all_args[0] = x;
-                            return func.function.Call(all_args);
+                            allArgs[0] = x;
+                            return func.function.Call(allArgs);
                         }
-                        return new CurJson(out_type, arg_outfunc);
+                        return new CurJson(outType, argOutfunc);
                     }
                 }
                 else
                 {
-                    // none of the arguments are functions of the current JSON
-                    for (int ii = 0; ii < other_args.Count; ii++)
-                    {
-                        JNode other_arg = other_args[ii];
-                        all_args[ii + 1] = other_arg;
-                    }
-                    if (x.type == Dtype.OBJ)
-                    {
-                        var xobj = (JObject)x;
-                        var dic = new Dictionary<string, JNode>();
-                        foreach (string key in xobj.children.Keys)
-                        {
-                            all_args[0] = xobj[key];
-                            dic[key] = func.function.Call(all_args);
-                        }
-                        return new JObject(0, dic);
-                    }
-                    else if (x.type == Dtype.ARR)
-                    {
-                        var xarr = (JArray)x;
-                        var arr = new List<JNode>();
-                        foreach (JNode val in xarr.children)
-                        {
-                            all_args[0] = val;
-                            arr.Add(func.function.Call(all_args));
-                        }
-                        return new JArray(0, arr);
-                    }
-                    // x is not iterable, and no args are functions of the current JSON
-                    all_args[0] = x;
-                    return func.function.Call(all_args);
+                    if (!func.function.isDeterministic)
+                        return new CurJson(func.function.type, blah => CallVectorizedArgFuncWithArgs(x, otherArgs, allArgs, func.function));
+                    return CallVectorizedArgFuncWithArgs(x, otherArgs, allArgs, func.function);
                 }
             }
             else
             {
                 // this is NOT a vectorized arg function (it's something like len or mean)
-                if (x is CurJson)
+                if (x is CurJson xcur)
                 {
-                    CurJson xcur = (CurJson)x;
-                    if (other_callables)
+                    if (otherCallables)
                     {
-                        JNode arg_outfunc(JNode inp)
+                        JNode argOutfunc(JNode inp)
                         {
-                            for (int ii = 0; ii < other_args.Count; ii++)
+                            for (int ii = 0; ii < otherArgs.Count; ii++)
                             {
-                                JNode other_arg = other_args[ii];
-                                all_args[ii + 1] = other_arg is CurJson ? ((CurJson)other_arg).function(inp) : other_arg;
+                                JNode otherArg = otherArgs[ii];
+                                allArgs[ii + 1] = (otherArg is CurJson cjoa && !argsCanBeFunctions[ii]) ? cjoa.function(inp) : otherArg;
                             }
-                            all_args[0] = xcur.function(inp);
-                            return func.function.Call(all_args);
+                            allArgs[0] = firstArgCanBeFunction ? xcur : xcur.function(inp);
+                            return func.function.Call(allArgs);
                         }
-                        return new CurJson(out_type, arg_outfunc);
+                        return new CurJson(outType, argOutfunc);
                     }
                     else
                     {
-                        for (int ii = 0; ii < other_args.Count; ii++)
+                        for (int ii = 0; ii < otherArgs.Count; ii++)
                         {
-                            JNode other_arg = other_args[ii];
-                            all_args[ii + 1] = other_arg;
+                            JNode otherArg = otherArgs[ii];
+                            allArgs[ii + 1] = otherArg;
                         }
-                        JNode arg_outfunc(JNode inp)
+                        JNode argOutfunc(JNode inp)
                         {
-                            all_args[0] = xcur.function(inp);
-                            return func.function.Call(all_args);
+                            allArgs[0] = firstArgCanBeFunction ? xcur : xcur.function(inp);
+                            return func.function.Call(allArgs);
                         }
-                        return new CurJson(out_type, arg_outfunc);
+                        return new CurJson(outType, argOutfunc);
                     }
                 }
-                else if (other_callables)
+                else if (otherCallables)
                 {
                     // it's a non-vectorized function where the first arg is not a current json func but at least
                     // one other is
-                    JNode arg_outfunc(JNode inp)
+                    JNode argOutfunc(JNode inp)
                     {
-                        for (int ii = 0; ii < other_args.Count; ii++)
+                        for (int ii = 0; ii < otherArgs.Count; ii++)
                         {
-                            JNode other_arg = other_args[ii];
-                            all_args[ii + 1] = other_arg is CurJson ? ((CurJson)other_arg).function(inp) : other_arg;
+                            JNode otherArg = otherArgs[ii];
+                            allArgs[ii + 1] = (otherArg is CurJson cjoa && !argsCanBeFunctions[ii]) ? cjoa.function(inp) : otherArg;
                         }
-                        all_args[0] = x;
-                        return func.function.Call(all_args);
+                        allArgs[0] = x;
+                        return func.function.Call(allArgs);
                     }
-                    return new CurJson(out_type, arg_outfunc);
+                    return new CurJson(outType, argOutfunc);
                 }
                 // it is a non-vectorized function where none of the args are functions of the current
                 // json (e.g., s_mul(`a`, 14))
-                for (int ii = 0; ii < other_args.Count; ii++)
+                for (int ii = 0; ii < otherArgs.Count; ii++)
                 {
-                    JNode other_arg = other_args[ii];
-                    all_args[ii + 1] = other_arg;
+                    JNode otherArg = otherArgs[ii];
+                    allArgs[ii + 1] = otherArg;
                 }
-                all_args[0] = x;
-                return func.function.Call(all_args);
+                allArgs[0] = x;
+                if (!func.function.isDeterministic)
+                    return new CurJson(func.function.type, blah => func.function.Call(allArgs));
+                return func.function.Call(allArgs);
             }
         }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="x"></param>
+        /// <param name="otherArgs"></param>
+        /// <param name="allArgs"></param>
+        /// <param name="func"></param>
+        /// <returns></returns>
+        private static JNode CallVectorizedArgFuncWithArgs(JNode x, List<JNode> otherArgs, List<JNode> allArgs, ArgFunction func)
+        {
+            // none of the arguments are functions of the current JSON
+            for (int ii = 0; ii < otherArgs.Count; ii++)
+            {
+                JNode otherArg = otherArgs[ii];
+                allArgs[ii + 1] = otherArg;
+            }
+            if (x is JObject xobj)
+            {
+                var dic = new Dictionary<string, JNode>(xobj.Length);
+                foreach (KeyValuePair<string, JNode> xkv in xobj.children)
+                {
+                    allArgs[0] = xobj[xkv.Key];
+                    dic[xkv.Key] = func.Call(allArgs);
+                }
+                return new JObject(0, dic);
+            }
+            else if (x is JArray xarr)
+            {
+                var arr = new List<JNode>(xarr.Length);
+                foreach (JNode val in xarr.children)
+                {
+                    allArgs[0] = val;
+                    arr.Add(func.Call(allArgs));
+                }
+                return new JArray(0, arr);
+            }
+            // x is not iterable, and no args are functions of the current JSON
+            allArgs[0] = x;
+            return func.Call(allArgs);
+        }
+
         #endregion
         #region PARSER_FUNCTIONS
 
-        private static object PeekNextToken(List<object> toks, int pos)
+        private static object PeekNextToken(List<object> toks, int pos, int end)
         {
-            if (pos + 1 >= toks.Count) { return null; }
+            if (pos + 1 >= end)
+                return null;
             return toks[pos + 1];
         }
 
-        private Obj_Pos ParseSlicer(List<object> toks, int pos, int? first_num)
+        /// <summary>
+        /// Parses toks as a series of statements terminated by semicolons (a semicolon after the last statement is optional).<br></br>
+        /// See ParseStatement for details on how those statements are parsed
+        /// </summary>
+        /// <param name="toks"></param>
+        /// <returns></returns>
+        private JNode ParseQuery(List<object> toks)
+        {
+            int pos = 0;
+            int end = toks.Count;
+            var context = new JQueryContext();
+            Dictionary<string, bool> isVarnameFunctionOfInput = DetermineWhichVariablesAreFunctionsOfInput(toks);
+            while (pos < end)
+            {
+                int nextSemicolon = toks.IndexOf(';', pos, end - pos);
+                int endOfStatement = nextSemicolon < 0 ? end : nextSemicolon;
+                JNode statement = ParseStatement(toks, pos, endOfStatement, context, isVarnameFunctionOfInput);
+                context.AddStatement(statement);
+                pos = endOfStatement + 1;
+            }
+            return context.GetQuery();
+        }
+
+        /// <summary>
+        /// If a variable is not a function of the input, RemesPath can evaluate all functions and binops that reference that variable at compile time.<br></br>
+        /// However, sometimes a variable could be assigned to a compile-time constant value, referenced in a function,<br></br>
+        /// and then later reassigned to a value that is a function of input.<br></br>
+        /// The only way to know for sure that a variable is a function of input (and thus ineligible for constant propagation in functions)<br></br>
+        /// is to scan through the entire input before actually evaluating functions and flag whether each variable is a function of input.<br></br>
+        /// Returns a map from variable names to the predicate (the variable with that name is a function of input)
+        /// </summary>
+        /// <param name="toks"></param>
+        /// <returns></returns>
+        private Dictionary<string, bool> DetermineWhichVariablesAreFunctionsOfInput(List<object> toks)
+        {
+            var isVarnameFunctionOfInput = new Dictionary<string, bool>();
+            int pos = 0;
+            int end = toks.Count;
+            bool containsMutation = false;
+            while (pos < end)
+            {
+                int nextSemicolon = toks.IndexOf(';', pos, end - pos);
+                int endOfStatement = nextSemicolon < 0 ? end : nextSemicolon;
+                int nextEqualsSign = toks.IndexOf('=', pos, end - pos);
+                if (nextEqualsSign >= 0 && nextEqualsSign < endOfStatement)
+                {
+                    // it's an assignment expression or a variable assignment.
+                    // either way, we will assume that any variable referenced on the LHS *could* be a function of the input
+                    // if the RHS references the input.
+                    (pos, containsMutation) = CheckStatementForInputReferences(toks, pos, nextEqualsSign, endOfStatement, isVarnameFunctionOfInput, containsMutation);
+                }
+                else
+                    pos = endOfStatement + 1;
+            }
+            ArgFunction.InitializeGlobals(containsMutation);
+            if (containsMutation)
+            {
+                // no variable is safe from the mutation, not even ones that were declared before the mutation expression
+                foreach (string varname in isVarnameFunctionOfInput.Keys.ToArray())
+                    isVarnameFunctionOfInput[varname] = true;
+            }
+            return isVarnameFunctionOfInput;
+        }
+
+        /// <summary>
+        /// always returns endOfStatement + 1.<br></br>
+        /// If the RHS of the current statement (tokens in toks between equalsPosition and endOfStatement) contains any references to input (@)
+        /// or variables that themselves reference the current input,<br></br>
+        /// also sets isVarnameFunctionOfInput[varname] = true for all variable names on the LHS of the current statement (tokens in toks between pos and equalsPosition)<br></br>
+        /// If RHS is NOT function of input, sets isVarnameFunctionOfInput[varname] = false for every varname on LHS *if isVanameFunctionOfInput[varname] is not already true*
+        /// </summary>
+        /// <param name="toks">list of tokens</param>
+        /// <param name="pos">position to start iterating</param>
+        /// <param name="equalsPosition">the position of the next '=' sign</param>
+        /// <param name="endOfStatement">the position of the next semicolon or the end of the query</param>
+        /// <param name="isVarnameFunctionOfInput">map from variable name to bool (this variable is a function of input)</param>
+        /// <returns></returns>
+        private (int end, bool containsMutation) CheckStatementForInputReferences(List<object> toks, int pos, int equalsPosition, int endOfStatement, Dictionary<string, bool> isVarnameFunctionOfInput, bool containsMutation)
+        {
+            if (StatementIsVarAssign(toks, pos, endOfStatement, out string varname, out VariableAssignmentType assignmentType))
+            {
+                // variable assignment; obviously the varname is on the LHS
+                if (containsMutation || assignmentType == VariableAssignmentType.LOOP)
+                {
+                    // loop variables are re-cached for every iteration of the loop
+                    // so even if you're looping over a compile-time known constant, it's effectively a function of input
+                    isVarnameFunctionOfInput[varname] = true;
+                    return (endOfStatement + 1, containsMutation);
+                }
+            }
+            else
+            {
+                // it's a mutator expression (aka assignment expression)
+                // we can't assume that ANY variable is safe from this mutation without doing some really complex analysis of the reference graph
+                // so we'll just quit and assume that all variables are functions of input
+                return (endOfStatement + 1, true);
+                
+            }
+            // LHS is variable assignment and there are no mutation expressions in the query; check RHS for functions of input
+            for (pos = equalsPosition + 1; pos < endOfStatement; pos++)
+            {
+                object tok = toks[pos];
+                if (tok is CurJson // RHS references input directly
+                    || (tok is UnquotedString otherVarUqs && isVarnameFunctionOfInput.TryGetValue(otherVarUqs.value, out bool otherVarReferencesInput)
+                        && otherVarReferencesInput)) // varname in RHS references input
+                {
+                    isVarnameFunctionOfInput[varname] = true;
+                    return (endOfStatement + 1, false);
+                }
+            }
+            // rhs doesn't ref input, so all variables on LHS are assumed not to ref input
+            // unless they were previously defined in a way that referenced input
+            if (!(isVarnameFunctionOfInput.TryGetValue(varname, out bool wasAlreadyFunctionOfInput) && wasAlreadyFunctionOfInput))
+                isVarnameFunctionOfInput[varname] = false;
+            return (endOfStatement + 1, false);
+        }
+
+        private JNode ParseStatement(List<object> toks, int start, int end, JQueryContext context, Dictionary<string, bool> isVarnameFunctionOfInput)
+        {
+            int indexOfAssignment = toks.IndexOf('=', start, end - start);
+            if (indexOfAssignment == start)
+                throw new RemesPathException("Assignment operator '=' with no left-hand side");
+            if (indexOfAssignment == end - 1)
+                throw new RemesPathException("Assignment operator '=' with no right-hand side");
+            if (indexOfAssignment >= 0)
+            {
+                if (toks.IndexOf('=', indexOfAssignment + 1, end - indexOfAssignment - 1) >= 0)
+                    throw new RemesPathException("Only one '=' assignment operator allowed in a statement");
+                if (StatementIsVarAssign(toks, start, end, out string varname, out VariableAssignmentType assignmentType))
+                {
+                    // variable assignment
+                    // TODO: need to figure out what to do if variable name collides with function names
+                    bool isFunctionOfInput = isVarnameFunctionOfInput[varname];
+                    return ParseVariableAssignment(toks, start + 3, end, varname, context, assignmentType, isFunctionOfInput);
+                }
+                return ParseAssignmentExpr(toks, start, end, indexOfAssignment, context);
+            }
+            else if (StatementIsLoopEnd(toks, start, end))
+            {
+                return new LoopEnd();
+            }
+            return (JNode)ParseExprFunc(toks, start, end, context).obj;
+        }
+
+        private JMutator ParseAssignmentExpr(List<object> toks, int start, int end, int indexOfAssignment, JQueryContext context)
+        {
+            JNode selector = (JNode)ParseExprFunc(toks, start, indexOfAssignment, context).obj;
+            JNode mutator = (JNode)ParseExprFunc(toks, indexOfAssignment + 1, end, context).obj;
+            return new JMutator(selector, mutator);
+        }
+        
+        private JNode ParseVariableAssignment(List<object> toks, int start, int end, string name, JQueryContext context, VariableAssignmentType assignmentType, bool isFunctionOfInput)
+        {
+            JNode value = (JNode)ParseExprFunc(toks, start, end, context).obj;
+            return new VarAssign(name, value, context.indexInStatements, assignmentType, isFunctionOfInput);
+        }
+
+        /// <summary>
+        /// VAR_ASSIGN := VAR_KEYWORD VARNAME "=" ExprFunc<br></br>
+        /// returns true, assignmentType = RemesPathLexer.VAR_ASSIGN_KEYWORDS_TO_TYPES[VAR_KEYWORD], and VARNAME = (an unquoted string between varKeyword and "=")<br></br>
+        /// At present VAR_KEYWORD can only be "var" or "for".<br></br>
+        /// if the statement is not of that form, return false, varname = null, and assignmentType = VariableAssignmentType.INVALID.
+        /// </summary>
+        private bool StatementIsVarAssign(List<object> toks, int start, int end, out string varname, out VariableAssignmentType assignmentType)
+        {
+            varname = null;
+            assignmentType = VariableAssignmentType.INVALID;
+            if (end <= toks.Count && start <= end - 4 // [var, name, =, end] - there are 4 tokens in a minimal assignment expression 
+                && toks[start] is UnquotedString uqs && RemesPathLexer.VAR_ASSIGN_KEYWORDS_TO_TYPES.TryGetValue(uqs.value, out assignmentType)
+                && toks[start + 1] is UnquotedString varnameUqs
+                && toks[start + 2] is char c && c == '=')
+            {
+                varname = varnameUqs.value;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// LOOP_END := LOOP_END_KEYWORD LOOP_KEYWORD<br></br>
+        /// returns true if the statement is of this form.
+        /// LOOP_END_KEYWORD is currently "end" and LOOP_KEYWORD is currently "for"<br></br>
+        /// </summary>
+        private bool StatementIsLoopEnd(List<object> toks, int start, int end)
+        {
+            return (end <= toks.Count && start == end - 2
+                && toks[start] is UnquotedString keywordUqs && keywordUqs.value == RemesPathLexer.LOOP_END_KEYWORD
+                && toks[start + 1] is UnquotedString uqs && RemesPathLexer.LOOP_VAR_KEYWORDS.Contains(uqs.value));
+        }
+
+        private Obj_Pos ParseSlicer(List<object> toks, int pos, int? firstNum, int end, JQueryContext context)
         {
             var slicer = new int?[3];
-            int slots_filled = 0;
-            int? last_num = first_num;
-            while (pos < toks.Count)
+            int slotsFilled = 0;
+            int? lastNum = firstNum;
+            while (pos < end)
             {
                 object t = toks[pos];
-                if (t is char)
+                if (t is char tval)
                 {
-                    char tval = (char)t;
                     if (tval == ':')
                     {
-                        slicer[slots_filled++] = last_num;
-                        last_num = null;
+                        slicer[slotsFilled++] = lastNum;
+                        lastNum = null;
                         pos++;
                         continue;
                     }
@@ -1302,26 +1424,26 @@ namespace JSON_Tools.JSON_Tools
                 }
                 try
                 {
-                    Obj_Pos npo = ParseExprOrScalarFunc(toks, pos);
+                    Obj_Pos npo = ParseExprFunc(toks, pos, end, context);
                     JNode numtok = (JNode)npo.obj;
                     pos = npo.pos;
                     if (numtok.type != Dtype.INT)
                     {
                         throw new ArgumentException();
                     }
-                    last_num = Convert.ToInt32(numtok.value);
+                    lastNum = Convert.ToInt32(numtok.value);
                 }
                 catch (Exception)
                 {
                     throw new RemesPathException("Found non-integer while parsing a slicer");
                 }
-                if (slots_filled == 2)
+                if (slotsFilled == 2)
                 {
                     break;
                 }
             }
-            slicer[slots_filled++] = last_num;
-            slicer = slicer.Take(slots_filled).ToArray();
+            slicer[slotsFilled++] = lastNum;
+            slicer = slicer.Take(slotsFilled).ToArray();
             return new Obj_Pos(new JSlicer(slicer), pos);
         }
 
@@ -1337,101 +1459,148 @@ namespace JSON_Tools.JSON_Tools
             }
         }
 
-        private Obj_Pos ParseIndexer(List<object> toks, int pos)
+        private static (IndexerStart indStart, int pos) DetermineIndexerStart(List<object> toks, int pos, int end)
+        {
+            object t = PeekNextToken(toks, pos - 1, end);
+            if (!(t is char d) || !INDEXER_STARTERS.Contains(d))
+            {
+                return (IndexerStart.NOT_AN_INDEXER, pos);
+            }
+            object nt = PeekNextToken(toks, pos, end);
+            if (nt is char nd)
+            {
+                if (d == '.' && nd == '.')
+                {
+                    object nnt = PeekNextToken(toks, pos + 1, end);
+                    if (nnt is char nnd && nnd == '[')
+                        return (IndexerStart.DOUBLEDOT_SQUAREBRACE, pos + 3);
+                    return (IndexerStart.DOUBLEDOT, pos + 2);
+                }
+                if (d == '!')
+                {
+                    if (nd == '.')
+                    {
+                        //object nnt = PeekNextToken(toks, pos + 1, end);
+                        //if (nnt is char nnd && nnd == '.') // uncomment if bringing back support for negated recursive indexers
+                        //{
+                        //    object nnnt = PeekNextToken(toks, pos + 2, end);
+                        //    if (nnnt is char nnnd && nnnd == '[')
+                        //        return (IndexerStart.BANG_DOUBLEDOT_SQUAREBRACE, pos + 4);
+                        //    return (IndexerStart.BANG_DOUBLEDOT, pos + 3);
+                        //}
+                        return (IndexerStart.BANG_DOT, pos + 2);
+                    }
+                    else if (nd == '[')
+                        return (IndexerStart.BANG_SQUAREBRACE, pos + 2);
+                    return (IndexerStart.NOT_AN_INDEXER, pos);
+                }
+            }
+            switch (d)
+            {
+            case '[': return (IndexerStart.SQUAREBRACE, pos + 1);
+            case '{': return (IndexerStart.CURLYBRACE, pos + 1);
+            case '.': return (IndexerStart.DOT, pos + 1);
+            case '>': return (IndexerStart.FORWARD_ARROW, pos + 1);
+            default: return (IndexerStart.NOT_AN_INDEXER, pos);
+            }
+        }
+
+        /// <summary>
+        /// Parses all indexers, including projections.
+        /// </summary>
+        private Obj_Pos ParseIndexer(List<object> toks, int pos, int end, IndexerStart indStart, JQueryContext context)
         {
             object t = toks[pos];
             object nt;
-            if (!(t is char))
-            {
-                throw new RemesPathException("Expected delimiter at the start of indexer");
-            }
-            char d = (char)t;
             List<object> children = new List<object>();
-            if (d == '.')
+            if (IndexerStart.ANY_DOT_TYPE.HasFlag(indStart))
             {
-                nt = PeekNextToken(toks, pos);
-                if (nt != null)
+                if (t != null)
                 {
-                    if (nt is Binop && ((Binop)nt).name == "*")
+                    if (t is Binop bt && bt.name == "*")
                     {
                         // it's a '*' indexer, which means select all keys/indices
-                        return new Obj_Pos(new StarIndexer(), pos + 2);
+                        return new Obj_Pos(new StarIndexer(), pos + 1);
                     }
-                    JNode jnt = (JNode)nt;
-                    if ((jnt.type & Dtype.STR_OR_REGEX) == 0)
+                    JNode jt = (t is UnquotedString st)
+                        ? new JNode(st.value, Dtype.STR, 0)
+                        : (JNode)t;
+                    if ((jt.type & Dtype.STR_OR_REGEX) == 0)
                     {
                         throw new RemesPathException("'.' syntax for indexers requires that the indexer be a string, " +
                                                     "regex, or '*'");
                     }
-                    if (jnt is JRegex)
+                    if (jt is JRegex jnreg)
                     {
-                        children.Add(((JRegex)jnt).regex);
+                        children.Add(jnreg.regex);
                     }
                     else
                     {
-                        children.Add(jnt.value);
+                        children.Add((string)jt.value);
                     }
-                    return new Obj_Pos(new VarnameList(children), pos + 2);
+                    return new Obj_Pos(new VarnameList(children), pos + 1);
                 }
             }
-            else if (d == '{')
+            else if (indStart == IndexerStart.CURLYBRACE)
             {
-                return ParseProjection(toks, pos+1);
+                return ParseProjection(toks, pos, end, context);
             }
-            else if (d != '[')
+            else if (indStart == IndexerStart.FORWARD_ARROW)
             {
-                throw new RemesPathException("Indexer must start with '.' or '[' or '{'");
+                return ParseMap(toks, pos, end, context);
+            }
+            else if (!IndexerStart.ANY_SQUAREBRACE_TYPE.HasFlag(indStart))
+            {
+                throw new RemesPathException("Indexer must start with '.', '[', '{', '!', or \"->\"");
             }
             Indexer indexer = null;
-            object last_tok = null;
-            JNode jlast_tok;
-            Dtype last_type = Dtype.UNKNOWN;
-            t = toks[++pos];
-            if (t is Binop && ((Binop)t).name == "*")
+            object lastTok = null;
+            JNode jlastTok;
+            Dtype lastType = Dtype.UNKNOWN;
+            if (t is Binop b && b.name == "*")
             {
-                // it was '*', indicating a star indexer
-                nt = PeekNextToken(toks, pos);
-                if (nt is char && (char)nt  == ']')
+                // it was '*', indicating star indexer in squarebraces ("[*]")
+                nt = PeekNextToken(toks, pos, end);
+                if (nt is char nd && nd  == ']')
                 {
                     return new Obj_Pos(new StarIndexer(), pos + 2);
                 }
                 throw new RemesPathException("Unacceptable first token '*' for indexer list");
             }
-            while (pos < toks.Count)
+            while (pos < end)
             {
                 t = toks[pos];
-                if (t is char)
+                if (t is char d)
                 {
-                    d = (char)t;
                     if (d == ']')
                     {
                         // it's a ']' that terminates the indexer
-                        if (last_tok == null)
+                        if (lastTok == null)
                         {
                             throw new RemesPathException("Empty indexer");
                         }
                         if (indexer == null)
                         {
-                            if ((last_type & Dtype.STR_OR_REGEX) != 0)
+                            if ((lastType & Dtype.STR_OR_REGEX) != 0)
                             {
                                 indexer = new VarnameList(children);
                             }
-                            else if ((last_type & Dtype.INT_OR_SLICE) != 0)
+                            else if ((lastType & Dtype.INT_OR_SLICE) != 0)
                             {
                                 indexer = new SlicerList(children);
                             }
                             else
                             {
                                 // it's a boolean index of some sort, e.g. [@ > 0]
-                                indexer = new BooleanIndex(last_tok);
+                                indexer = new BooleanIndex(lastTok);
                             }
                         }
                         if (indexer is VarnameList || indexer is SlicerList)
                         {
-                            children.Add(GetSingleIndexerListValue((JNode)last_tok));
+                            children.Add(GetSingleIndexerListValue((JNode)lastTok));
                         }
-                        else if ((indexer is VarnameList && (last_type & Dtype.STR_OR_REGEX) == 0) // a non-string, non-regex in a varname list
-                                || (indexer is SlicerList && (last_type & Dtype.INT_OR_SLICE) == 0))// a non-int, non-slice in a slicer list
+                        else if ((indexer is VarnameList && (lastType & Dtype.STR_OR_REGEX) == 0) // a non-string, non-regex in a varname list
+                                || (indexer is SlicerList && (lastType & Dtype.INT_OR_SLICE) == 0))// a non-int, non-slice in a slicer list
                         {
                             throw new RemesPathException("Cannot have indexers with a mix of ints/slicers and " +
                                                          "strings/regexes");
@@ -1440,492 +1609,584 @@ namespace JSON_Tools.JSON_Tools
                     }
                     if (d == ',')
                     {
-                        if (last_tok == null)
+                        if (lastTok == null)
                         {
                             throw new RemesPathException("Comma before first token in indexer");
                         }
                         if (indexer == null)
                         {
-                            if ((last_type & Dtype.STR_OR_REGEX) != 0)
+                            if ((lastType & Dtype.STR_OR_REGEX) != 0)
                             {
                                 indexer = new VarnameList(children);
                             }
-                            else if ((last_type & Dtype.INT_OR_SLICE) != 0)
+                            else if ((lastType & Dtype.INT_OR_SLICE) != 0)
                             {
                                 indexer = new SlicerList(children);
                             }
                         }
-                        children.Add(GetSingleIndexerListValue((JNode)last_tok));
-                        last_tok = null;
-                        last_type = Dtype.UNKNOWN;
+                        children.Add(GetSingleIndexerListValue((JNode)lastTok));
+                        lastTok = null;
+                        lastType = Dtype.UNKNOWN;
                         pos++;
                     }
                     else if (d == ':')
                     {
-                        if (last_tok == null)
+                        if (lastTok == null)
                         {
-                            Obj_Pos opo = ParseSlicer(toks, pos, null);
-                            last_tok = opo.obj;
+                            Obj_Pos opo = ParseSlicer(toks, pos, null, end, context);
+                            lastTok = opo.obj;
                             pos = opo.pos;
                         }
-                        else if (last_tok is JNode)
+                        else if (lastTok is JNode)
                         {
-                            jlast_tok = (JNode)last_tok;
-                            if (jlast_tok.type != Dtype.INT)
+                            jlastTok = (JNode)lastTok;
+                            if (jlastTok.type != Dtype.INT)
                             {
-                                throw new RemesPathException($"Expected token other than ':' after {jlast_tok} " +
+                                throw new RemesPathException($"Expected token other than ':' after {jlastTok} " +
                                                              $"in an indexer");
                             }
-                            Obj_Pos opo = ParseSlicer(toks, pos, Convert.ToInt32(jlast_tok.value));
-                            last_tok = opo.obj;
+                            Obj_Pos opo = ParseSlicer(toks, pos, Convert.ToInt32(jlastTok.value), end, context);
+                            lastTok = opo.obj;
                             pos = opo.pos;
                         }
                         else
                         {
-                            throw new RemesPathException($"Expected token other than ':' after {last_tok} in an indexer");
+                            throw new RemesPathException($"Expected token other than ':' after {lastTok} in an indexer");
                         }
-                        last_type = ((JNode)last_tok).type;
+                        lastType = ((JNode)lastTok).type;
                     }
                     else
                     {
-                        throw new RemesPathException($"Expected token other than {t} after {last_tok} in an indexer");
+                        throw new RemesPathException($"Expected token other than {t} after {lastTok} in an indexer");
                     }
                 }
-                else if (last_tok != null)
+                else if (lastTok != null)
                 {
-                    throw new RemesPathException($"Consecutive indexers {last_tok} and {t} must be separated by commas");
+                    throw new RemesPathException($"Consecutive indexers {lastTok} and {t} must be separated by commas");
                 }
                 else
                 {
                     // it's a new token of some sort
-                    Obj_Pos opo = ParseExprOrScalarFunc(toks, pos);
-                    last_tok = opo.obj;
+                    Obj_Pos opo = ParseExprFunc(toks, pos, end, context);
+                    lastTok = opo.obj;
                     pos = opo.pos;
-                    last_type = ((JNode)last_tok).type;
+                    lastType = ((JNode)lastTok).type;
                 }
             }
             throw new RemesPathException("Unterminated indexer");
         }
 
-        private Obj_Pos ParseExprOrScalar(List<object> toks, int pos)
+        /// <summary>
+        /// handles the following:<br></br>
+        /// * grouping parentheses<br></br>
+        /// * determining whether an unquoted string is an arg function or just a string<br></br>
+        /// * parsing and applying chained indexers
+        /// </summary>
+        private Obj_Pos ParseExpr(List<object> toks, int pos, int end, JQueryContext context)
         {
             if (toks.Count == 0)
             {
                 throw new RemesPathException("Empty query");
             }
             object t = toks[pos];
-            JNode last_tok = null;
-            if (t is Binop)
+            JNode lastTok = null;
+            if (t is Binop b)
             {
-                throw new RemesPathException($"Binop {(Binop)t} without appropriate left operand");
+                throw new RemesPathException($"Binop {b} without appropriate left operand");
             }
-            if (t is char)
+            if (t is char delim)
             {
-                char d = (char)t;
-                if (d != '(')
+                if (delim != '(')
                 {
-                    throw new RemesPathException($"Invalid token {d} at position {pos}");
+                    throw new RemesPathException($"Invalid token {delim} at position {pos}");
                 }
-                int unclosed_parens = 1;
-                List<object> subquery = new List<object>();
-                for (int end = pos + 1; end < toks.Count; end++)
+                int unclosedParens = 1;
+                int subqueryStart = pos + 1;
+                for (int subqueryEnd = subqueryStart; subqueryEnd < end; subqueryEnd++)
                 {
-                    object subtok = toks[end];
-                    if (subtok is char)
+                    object subtok = toks[subqueryEnd];
+                    if (subtok is char subd)
                     {
-                        char subd = (char)subtok;
                         if (subd == '(')
                         {
-                            unclosed_parens++;
+                            unclosedParens++;
                         }
                         else if (subd == ')')
                         {
-                            if (--unclosed_parens == 0)
+                            if (--unclosedParens == 0)
                             {
-                                last_tok = (JNode)ParseExprOrScalarFunc(subquery, 0).obj;
-                                pos = end + 1;
+                                lastTok = (JNode)ParseExprFunc(toks, subqueryStart, subqueryEnd, context).obj;
+                                pos = subqueryEnd + 1;
                                 break;
                             }
                         }
                     }
-                    subquery.Add(subtok);
                 }
             }
-            else if (t is ArgFunction)
+            else if (t is UnquotedString st)
             {
-                Obj_Pos opo = ParseArgFunction(toks, pos+1, (ArgFunction)t);
-                last_tok = (JNode)opo.obj;
-                pos = opo.pos;
-            }
-            else
-            {
-                last_tok = (JNode)t;
-                pos++;
-            }
-            if (last_tok == null)
-            {
-                throw new RemesPathException("Found null where JNode expected");
-            }
-            if ((last_tok.type & Dtype.ITERABLE) != 0)
-            {
-                // the last token is an iterable, so now we look for indexers that slice it
-                var idxrs = new List<IndexerFunc>();
-                object nt = PeekNextToken(toks, pos - 1);
-                object nt2, nt3;
-                while (nt != null && nt is char && INDEXER_STARTERS.Contains((char)nt))
+                string s = st.value;
+                if (pos < end - 1
+                    && toks[pos + 1] is char c && c == '(')
                 {
-                    nt2 = PeekNextToken(toks, pos);
-                    bool is_recursive = false;
-                    if (nt2 is char && (char)nt2 == '.' && (char)nt == '.')
+                    // an unquoted string followed by an open paren
+                    // *might* be an ArgFunction; we need to check
+                    if (ArgFunction.FUNCTIONS.TryGetValue(s, out ArgFunction af))
                     {
-                        is_recursive = true;
-                        nt3 = PeekNextToken(toks, pos + 1);
-                        pos += (nt3 is char && (char)nt3 == '[') ? 2 : 1;
-                    }
-                    Obj_Pos opo= ParseIndexer(toks, pos);
-                    Indexer cur_idxr = (Indexer)opo.obj;
-                    pos = opo.pos;
-                    nt = PeekNextToken(toks, pos - 1);
-                    bool is_varname_list = cur_idxr is VarnameList;
-                    bool is_dict = is_varname_list & !is_recursive;
-                    bool has_one_option = false;
-                    bool is_projection = false;
-                    if (is_varname_list || cur_idxr is SlicerList)
-                    {
-                        List<object> children = null;
-                        if (is_varname_list)
-                        {
-                            children = ((VarnameList)cur_idxr).children;
-                            // recursive search means that even selecting a single key/index could select from multiple arrays/dicts and thus get multiple results
-                            if (!is_recursive && children.Count == 1 && children[0] is string)
-                            {
-                                // the indexer only selects a single key from a dict
-                                // Since the key is defined implicitly by this choice, this indexer will only return the value
-                                has_one_option = true;
-                            }
-                        }
-                        else
-                        {
-                            children = ((SlicerList)cur_idxr).children;
-                            if (!is_recursive && children.Count == 1 && children[0] is int)
-                            {
-                                // the indexer only selects a single index from an array
-                                // Since the index is defined implicitly by this choice, this indexer will only return the value
-                                has_one_option = true;
-                            }
-                        }
-                        Func<JNode, IEnumerable<Key_Node>> idx_func = ApplyMultiIndex(children, is_varname_list, is_recursive);
-                        idxrs.Add(new IndexerFunc(idx_func, has_one_option, is_projection, is_dict, is_recursive));
-                    }
-                    else if (cur_idxr is BooleanIndex)
-                    {
-                        object boodex_fun = ((BooleanIndex)cur_idxr).value;
-                        Func<JNode, IEnumerable<Key_Node>> idx_func = ApplyBooleanIndex((JNode)boodex_fun);
-                        idxrs.Add(new IndexerFunc(idx_func, has_one_option, is_projection, is_dict, is_recursive));
-                    }
-                    else if (cur_idxr is Projection)
-                    {
-                        Func<JNode, IEnumerable<Key_Node>> proj_func = ((Projection)cur_idxr).proj_func;
-                        idxrs.Add(new IndexerFunc(proj_func, false, true, false, false));
+                        Obj_Pos opo = ParseArgFunction(toks, pos + 1, af, end, context);
+                        lastTok = (JNode)opo.obj;
+                        pos = opo.pos;
                     }
                     else
                     {
+                        throw new RemesPathException($"'{s}' is not the name of a RemesPath function.");
+                    }
+                }
+                else
+                {
+                    lastTok = ParseNonFunctionUnquotedStr(pos, st, context);
+                    pos++;
+                }
+            }
+            else
+            {
+                lastTok = (JNode)t;
+                pos++;
+            }
+            if (lastTok == null)
+            {
+                throw new RemesPathException("Found null where JNode expected");
+            }
+            (IndexerStart indStart, int indStartEndPos) = DetermineIndexerStart(toks, pos, end);
+            if ((lastTok.type & Dtype.ITERABLE) != 0 || IndexerStart.PROJECTION.HasFlag(indStart))
+            {
+                // The last token is an iterable (in which case various indexers are allowed)
+                // or the next token is the start of a projection (unlike other indexers, projections can operate on scalars too)
+                var idxrs = new List<IndexerFunc>();
+                pos = indStartEndPos;
+                while (indStart != IndexerStart.NOT_AN_INDEXER)
+                {
+                    bool isRecursive = IndexerStart.ANY_DOUBLEDOT_TYPE.HasFlag(indStart);
+                    bool isNegated = IndexerStart.ANY_BANG_TYPE.HasFlag(indStart);
+                    if (isRecursive && isNegated)
+                        throw new RemesPathException("Recursive negated indexers (of the form \"!..a\" or \"!..[g`a`]\") are not currently supported.");
+                    Obj_Pos opo = ParseIndexer(toks, pos, end, indStart, context);
+                    Indexer curIdxr = (Indexer)opo.obj;
+                    bool isVarnameList = curIdxr is VarnameList;
+                    bool isDict = isVarnameList & !isRecursive;
+                    bool hasOneOption = indStart == IndexerStart.FORWARD_ARROW; // Some slicer/varname lists return one item, but the map item always does
+                    bool isProjection = false;
+                    if (isVarnameList || curIdxr is SlicerList)
+                    {
+                        List<object> children = null;
+                        if (isVarnameList)
+                        {
+                            children = ((VarnameList)curIdxr).children;
+                            // recursive search means that even selecting a single key/index could select from multiple arrays/dicts and thus get multiple results
+                            if (!isRecursive && !isNegated && children.Count == 1 && children[0] is string)
+                            {
+                                // the indexer only selects a single key from a dict
+                                // Since the key is defined implicitly by this choice, this indexer will only return the value
+                                hasOneOption = true;
+                            }
+                        }
+                        else
+                        {
+                            children = ((SlicerList)curIdxr).children;
+                            if (!isRecursive && !isNegated && children.Count == 1 && children[0] is int)
+                            {
+                                // the indexer only selects a single index from an array
+                                // Since the index is defined implicitly by this choice, this indexer will only return the value
+                                hasOneOption = true;
+                            }
+                        }
+                        Func<JNode, IEnumerable<object>> idxFunc;
+                        if (isNegated)
+                        {
+                            if (isVarnameList)
+                                idxFunc = ApplyNegatedVarnameList(children);
+                            else
+                                idxFunc = ApplyNegatedSlicerList(children);
+                        }
+                        else
+                            idxFunc = ApplyMultiIndex(children, isVarnameList, isRecursive);
+                        idxrs.Add(new IndexerFunc(idxFunc, hasOneOption, isProjection, isDict, isRecursive));
+                    }
+                    else if (curIdxr is BooleanIndex boodex)
+                    {
+                        if (isNegated)
+                            throw new RemesPathException("Negated boolean indices are not supported; just invert the logic to get the same effect.");
+                        JNode boodexFun = (JNode)boodex.value;
+                        var idxr = new IndexerFunc(null, hasOneOption, isProjection, isDict, isRecursive);
+                        idxr.idxr = idxr.ApplyBooleanIndex(boodexFun);
+                        idxrs.Add(idxr);
+                    }
+                    else if (curIdxr is Projection proj)
+                    {
+                        if (isNegated)
+                            throw new RemesPathException("Negated projections are not supported.");
+                        Func<JNode, IEnumerable<object>> projFunc = proj.projFunc;
+                        idxrs.Add(new IndexerFunc(projFunc, hasOneOption, true, false, false));
+                    }
+                    else
+                    {
+                        if (isNegated)
+                            throw new RemesPathException("Negated star indexers are not supported.");
                         // it's a star indexer
-                        if (is_recursive)
+                        if (isRecursive)
                             idxrs.Add(new IndexerFunc(RecursivelyFlattenIterable, false, false, false, true));
                         else
-                            idxrs.Add(new IndexerFunc(ApplyStarIndexer, has_one_option, is_projection, is_dict, false));
+                            idxrs.Add(new IndexerFunc(ApplyStarIndexer, hasOneOption, isProjection, isDict, false));
                     }
+                    (indStart, pos) = DetermineIndexerStart(toks, opo.pos, end);
                 }
                 if (idxrs.Count > 0)
                 {
-                    if (last_tok is CurJson)
+                    Func<JNode, JNode> idxrsFunc = ApplyIndexerList(idxrs);
+                    // if we're indexing on a function of input, we can't evaluate the indexers at compile time
+                    if (lastTok is CurJson lcur)
                     {
-                        CurJson lcur = (CurJson)last_tok;
-                        JNode idx_func(JNode inp)
+                        JNode idxFunc(JNode inp)
                         {
-                            return ApplyIndexerList(idxrs)(lcur.function(inp));
+                            return idxrsFunc(lcur.function(inp));
                         }
-                        return new Obj_Pos(new CurJson(lcur.type, idx_func), pos);
+                        return new Obj_Pos(new CurJson(lcur.type, idxFunc), pos);
                     }
-                    if (last_tok is JObject)
+                    // if a variable is referenced in the indexers (e.g., "var x = @; range(10)[:]->at(x, @ % len(x))",
+                    // we also need to wait until runtime to evaluate the indexers
+                    if (context.AnyVariableReferencedInRange(indStartEndPos, pos))
                     {
-                        return new Obj_Pos(ApplyIndexerList(idxrs)((JObject)last_tok), pos);
+                        JNode idxFuncVarRef(JNode _)
+                        {
+                            return idxrsFunc(lastTok);
+                        }
+                        return new Obj_Pos(new CurJson(lastTok.type, idxFuncVarRef), pos);
                     }
-                    return new Obj_Pos(ApplyIndexerList(idxrs)((JArray)last_tok), pos);
+                    if (lastTok is JObject lastObj)
+                    {
+                        return new Obj_Pos(idxrsFunc(lastObj), pos);
+                    }
+                    return new Obj_Pos(idxrsFunc(lastTok), pos);
                 }
             }
-            return new Obj_Pos(last_tok, pos);
+            return new Obj_Pos(lastTok, pos);
         }
 
-        private Obj_Pos ParseExprOrScalarFunc(List<object> toks, int pos)
+        private JNode ParseNonFunctionUnquotedStr(int tokenIndex, UnquotedString uqs, JQueryContext context)
+        {
+            string s = uqs.value;
+            if (context.TryGetValue(tokenIndex, s, out JNode varNamedS))
+                return varNamedS; // it's a variable reference
+            // not a variable, just a string
+            return new JNode(s);
+        }
+
+        private Obj_Pos ParseExprFunc(List<object> toks, int pos, int end, JQueryContext context)
         {
             object curtok = null;
-            object nt = PeekNextToken(toks, pos);
+            object nt = PeekNextToken(toks, pos, end);
             // most common case is a single JNode followed by the end of the query or an expr func ender
             // e.g., in @[0,1,2], all of 0, 1, and 2 are immediately followed by an expr func ender
             // and in @.foo.bar the bar is followed by EOF
             // MAKE THE COMMON CASE FAST!
-            if (nt == null || (nt is char && EXPR_FUNC_ENDERS.Contains((char)nt)))
+            if (nt == null || (nt is char nd && EXPR_FUNC_ENDERS.Contains(nd)))
             {
                 curtok = toks[pos];
+                if (curtok is UnquotedString st)
+                {
+                    curtok = ParseNonFunctionUnquotedStr(pos, st, context);
+                }
                 if (!(curtok is JNode))
                 {
                     throw new RemesPathException($"Invalid token {curtok} where JNode expected");
                 }
                 return new Obj_Pos((JNode)curtok, pos + 1);
             }
-            bool uminus = false;
-            object left_tok = null;
-            object left_operand = null;
-            float left_precedence = float.MinValue;
-            BinopWithArgs root = null;
-            BinopWithArgs leaf = null;
-            object[] children = new object[2];
-            Binop func;
-            while (pos < toks.Count)
+            object leftTok = null;
+            object leftOperand = null;
+            var unopStack = new List<UnaryOp>();
+            UnaryOp unop;
+            var bwaStack = new List<BinopWithArgs>();
+            var argStack = new List<object>();
+            while (pos < end)
             {
-                left_tok = curtok;
+                leftTok = curtok;
                 curtok = toks[pos];
-                if (curtok is char && EXPR_FUNC_ENDERS.Contains((char)curtok))
+                if (curtok is char curd && EXPR_FUNC_ENDERS.Contains(curd))
                 {
-                    if (left_tok == null)
+                    if (leftTok == null)
                     {
                         throw new RemesPathException("No expression found where scalar expected");
                     }
-                    curtok = left_tok;
                     break;
                 }
-                if (curtok is Binop)
+                if (curtok is Binop bop)
                 {
-                    func = (Binop)curtok;
-                    if (left_tok == null || left_tok is Binop)
+                    if (!(leftTok is JNode))
                     {
-                        if (func.name != "-")
-                        {
-                            throw new RemesPathException($"Binop {func.name} with invalid left operand");
-                        }
-                        uminus = !uminus;
+                        // no left operand for binop, so maybe the current binop is actually a unary operator with same name
+                        if (UnaryOp.UNARY_OPS.TryGetValue(bop.name, out unop))
+                            unop.AddToStack(unopStack);
+                        else
+                            throw new RemesPathException($"Binop {bop.name} with invalid left operand");
                     }
                     else
                     {
-                        float show_precedence = func.precedence;
-                        if (func.name == "**")
+                        List<JNode> leftOperandTransformations = null;
+                        List<Binop> binopTransformations = null;
+                        if (unopStack.Count > 0)
                         {
-                            show_precedence += (float)0.1;
-                            // to account for right associativity or exponentiation
-                            if (uminus)
+                            if (!(leftTok is JNode leftNode))
+                                throw new RemesPathException($"Binop has non-JNode operand {leftTok}");
+                            leftOperandTransformations = new List<JNode>{ leftNode };
+                            binopTransformations = new List<Binop> { bop };
+                        }
+                        while (unopStack.Count > 0)
+                        {
+                            unop = unopStack.Pop();
+                            if (bop.PrecedesLeft(unop.precedence))
                             {
-                                // to account for exponentiation binding more tightly than unary minus
-                                curtok = func = new Binop(Binop.NegPow, show_precedence, "negpow");
-                                uminus = false;
-                            }
-                        }
-                        else
-                        {
-                            show_precedence = func.precedence;
-                        }
-                        if (left_precedence >= show_precedence)
-                        {
-                            // the left binop wins, so it takes the last operand as its right.
-                            // this binop becomes the root, and the next binop competes with it.
-                            leaf.right = left_operand;
-                            var newroot = new BinopWithArgs(func, root, null);
-                            leaf = root = newroot;
-                        }
-                        else
-                        {
-                            // the current binop wins, so it takes the left operand as its left.
-                            // the root stays the same, and the next binop competes with the current binop
-                            if (root == null)
-                            {
-                                leaf = root = new BinopWithArgs(func, left_operand, null);
+                                // unop has lower precedence than binop, so will be applied to the result of the binop's evaluation
+                                var oldBop = binopTransformations.Last();
+                                Func<JNode, JNode, JNode> oldBopCall = oldBop.Call;
+                                Func<JNode, JNode> unopCall = unop.Call;
+                                binopTransformations.Add(new Binop(
+                                    (a, b) => unopCall(oldBopCall(a, b)),
+                                    oldBop.precedence, oldBop.name, oldBop.isRightAssociative));
                             }
                             else
                             {
-                                var newleaf = new BinopWithArgs(func, left_operand, null);
-                                leaf.right = newleaf;
-                                leaf = newleaf;
+                                // unop called on left operand because it precedes current binop
+                                // binop will now act on unop'd left operand; pop unop from stack
+                                var oldLeftOperand = leftOperandTransformations.Last();
+                                leftOperandTransformations.Add(unop.Call(oldLeftOperand));
                             }
                         }
-                        left_precedence = func.precedence;
+                        if (leftOperandTransformations != null)
+                            argStack[argStack.Count - 1] = leftOperandTransformations.Last();
+                        if (binopTransformations != null)
+                            bop = binopTransformations.Last();
+                        bwaStack.Add(new BinopWithArgs(bop, null, null));
+                        leftOperand = BinopWithArgs.ResolveStack(bwaStack, argStack);
                     }
+                    pos++;
+                }
+                else if (curtok is UnaryOp unop_)
+                {
+                    unop_.AddToStack(unopStack);
                     pos++;
                 }
                 else
                 {
-                    if (left_tok != null && !(left_tok is Binop))
-                    {
-                        throw new RemesPathException("Can't have two iterables or scalars unseparated by a binop");
-                    }
-                    Obj_Pos opo = ParseExprOrScalar(toks, pos);
-                    left_operand = opo.obj;
+                    Obj_Pos opo = ParseExpr(toks, pos, end, context);
                     pos = opo.pos;
-                    if (uminus)
+                    if (!(opo.obj is JNode onode))
+                        throw new RemesPathException($"Expected JNode, got {opo.obj.GetType()}");
+                    nt = PeekNextToken(toks, pos - 1, end);
+                    if (nt == null || (nt is char nd_ && EXPR_FUNC_ENDERS.Contains(nd_)))
                     {
-                        nt = PeekNextToken(toks, pos - 1);
-                        if (!(nt != null && nt is Binop && ((Binop)nt).name == "**"))
+                        // no more binops for unary operators to fight with, so just apply all of them
+                        while (unopStack.Count > 0)
                         {
-                            // applying unary minus to this expr/scalar has higher precedence than everything except
-                            // exponentiation.
-                            List<JNode> args = new List<JNode> { (JNode)left_operand };
-                            var uminus_func = new ArgFunctionWithArgs(ArgFunction.FUNCTIONS["__UMINUS__"], args);
-                            left_operand = ApplyArgFunction(uminus_func);
-                            uminus = false;
+                            JNode oldOnode = onode;
+                            unop = unopStack.Pop();
+                            JNode newOnode = unop.Call(oldOnode);
+                            onode = newOnode;
                         }
                     }
-                    curtok = left_operand;
+                    argStack.Add(onode);
+                    // no binop coming up, so clean up the stack
+                    if (pos >= end || !(toks[pos] is Binop && bwaStack.Count > 0))
+                        leftOperand = BinopWithArgs.ResolveStack(bwaStack, argStack);
+                    curtok = onode;
                 }
             }
-            if (root != null)
-            {
-                leaf.right = curtok;
-                left_operand = ResolveBinopTree(root);
-            }
-            if (left_operand == null)
+            if (leftOperand == null)
             {
                 throw new RemesPathException("Null return from ParseExprOrScalar");
             }
-            return new Obj_Pos((JNode)left_operand, pos);
+            return new Obj_Pos(leftOperand, pos);
         }
 
-        private Obj_Pos ParseArgFunction(List<object> toks, int pos, ArgFunction fun)
+        private Obj_Pos ParseArgFunction(List<object> toks, int pos, ArgFunction fun, int end, JQueryContext context)
         {
-            object t = toks[pos];
-            if (!(t is char && (char)t == '('))
-            {
-                throw new RemesPathException($"Function {fun.name} must have parens surrounding arguments");
-            }
+            object t;
             pos++;
-            int arg_num = 0;
-            Dtype[] intypes = fun.input_types();
-            List<JNode> args = new List<JNode>(fun.min_args);
-            JNode cur_arg = null;
-            while (pos < toks.Count)
+            int argNum = 0;
+            List<JNode> args = new List<JNode>(fun.minArgs);
+            if (fun.maxArgs == 0)
             {
                 t = toks[pos];
-                // the last Dtype in an ArgFunction's input_types is either the type options for the last arg
+                if (!(t is char d_ && d_ == ')'))
+                    throw new RemesPathException($"Expected no arguments for function {fun.name} (0 args)");
+                var withArgs = new ArgFunctionWithArgs(fun, args);
+                return new Obj_Pos(ApplyArgFunction(withArgs), pos + 1);
+            }
+            JNode curArg = null;
+            while (pos < end)
+            {
+                t = toks[pos];
+                if (t is char d_ && (d_ == ',' || d_ == ')'))
+                {
+                    if (!(fun.maxArgs > fun.minArgs && argNum >= fun.minArgs
+                    && ((d_ == ',' && argNum < fun.maxArgs - 1) // ignore an optional arg that's not the last arg. e.g., "foo(a,,1)", where the second and third args are optional.
+                        || d_ == ')'))) // ignore the last arg if it is optional. e.g., "foo(a,)", where all args after the first are optional.
+                        throw new RemesPathArgumentException("Omitting a required argument for a function is not allowed", argNum, fun);
+                    // set defaults to optional args JavaScript-style, by simply omitting a token where the argument would normally go.
+                    args.Add(new JNode());
+                    argNum++;
+                    pos++;
+                    if (d_ == ')') // last arg was omitted and optional
+                    {
+                        var withargs = new ArgFunctionWithArgs(fun, args);
+                        fun.PadToMaxArgs(args);
+                        return new Obj_Pos(ApplyArgFunction(withargs), pos);
+                    }
+                    continue;
+                }
+                // the last Dtype in an ArgFunction's inputTypes is either the type options for the last arg
                 // or the type options for every optional arg (if the function can have infinitely many args)
-                Dtype type_options = arg_num >= intypes.Length ? intypes[intypes.Length - 1] : intypes[arg_num];
+                Dtype typeOptions = fun.TypeOptions(argNum); 
+                // Python style *args syntax; e.g. zip(*@) is equivalent to zip(@[0], @[1], @[2], ..., @[-1])
+                bool spreadCurArg = t is Binop b && b.name == "*";
+                if (spreadCurArg)
+                    pos++;
                 try
                 {
                     try
                     {
-                        Obj_Pos opo = ParseExprOrScalarFunc(toks, pos);
-                        cur_arg = (JNode)opo.obj;
+                        Obj_Pos opo = ParseExprFunc(toks, pos, end, context);
+                        curArg = (JNode)opo.obj;
                         pos = opo.pos;
                     }
                     catch
                     {
-                        cur_arg = null;
+                        curArg = null;
                     }
-                    if ((Dtype.SLICE & type_options) != 0)
+                    if ((Dtype.SLICE & typeOptions) != 0)
                     {
-                        object nt = PeekNextToken(toks, pos - 1);
-                        if (nt is char && (char)nt == ':')
+                        object nt = PeekNextToken(toks, pos - 1, end);
+                        if (nt is char nd && nd == ':')
                         {
-                            int? first_num;
-                            if (cur_arg == null)
+                            int? firstNum;
+                            if (curArg == null)
                             {
-                                first_num = null;
+                                firstNum = null;
                             }
                             else
                             {
-                                first_num = Convert.ToInt32(cur_arg.value);
+                                firstNum = Convert.ToInt32(curArg.value);
                             }
-                            Obj_Pos opo = ParseSlicer(toks, pos, first_num);
-                            cur_arg = (JNode)opo.obj;
+                            Obj_Pos opo = ParseSlicer(toks, pos, firstNum, end, context);
+                            curArg = (JNode)opo.obj;
                             pos = opo.pos;
                         }
                     }
-                    if (cur_arg == null || (cur_arg.type & type_options) == 0)
-                    {
-                        Dtype arg_type = (cur_arg) == null ? Dtype.NULL : cur_arg.type;
-                        throw new RemesPathArgumentException($"got type {JNode.FormatDtype(arg_type)}", arg_num, fun);
-                    }
+                    if (!spreadCurArg) // if spreading, we'll check the type of each element of curArg separately
+                        fun.CheckType(curArg, argNum);
                 }
                 catch (Exception ex)
                 {
                     if (ex is RemesPathArgumentException) throw;
-                    throw new RemesPathArgumentException($"threw exception {ex}.", arg_num, fun);
+                    throw new RemesPathArgumentException($"threw exception {ex}.", argNum, fun);
                 }
                 t = toks[pos];
+                pos++;
                 bool comma = false;
-                bool close_paren = false;
-                if (t is char)
+                bool closeParen = false;
+                if (t is char d)
                 {
-                    char d = (char)t;
                     comma = d == ',';
-                    close_paren = d == ')';
+                    closeParen = d == ')';
                 }
                 else
                 {
                     throw new RemesPathException($"Arguments of arg functions must be followed by ',' or ')', not {t}");
                 }
-                if (arg_num + 1 < fun.min_args && !comma)
+                if (spreadCurArg)
                 {
-                    if (fun.min_args == fun.max_args)
-                        throw new RemesPathException($"Expected ',' after argument {arg_num} of function {fun.name} ({fun.max_args} args)");
-                    throw new RemesPathException($"Expected ',' after argument {arg_num} of function {fun.name} " +
-                                                 $"({fun.min_args} - {fun.max_args} args)");
+                    if (!closeParen)
+                        throw new RemesPathException("There can be no arguments to a function after an array that was spread to multiple args using the '*' operator");
+                    // current argument is an array being "spread", meaning that each element is being used as a separate argument
+                    var spreadResult = SpreadArrayToArgFunctionArgs(args, curArg, fun);
+                    return new Obj_Pos(spreadResult, pos);
                 }
-                if (arg_num + 1 == fun.max_args && !close_paren)
+                else
                 {
-                    if (fun.min_args == fun.max_args)
-                        throw new RemesPathException($"Expected ')' after argument {arg_num} of function {fun.name} ({fun.max_args} args)");
-                    throw new RemesPathException($"Expected ')' after argument {arg_num} of function {fun.name} " +
-                                                 $"({fun.min_args} - {fun.max_args} args)");
+                    args.Add(curArg);
+                    argNum++;
                 }
-                args.Add(cur_arg);
-                arg_num++;
-                pos++;
-                if (close_paren)
+                if ((argNum < fun.minArgs && !comma)
+                    || (argNum == fun.maxArgs && !closeParen))
+                    fun.ThrowWrongArgCount(argNum);
+                if (closeParen)
                 {
                     var withargs = new ArgFunctionWithArgs(fun, args);
-                    if (fun.max_args < Int32.MaxValue)
-                    {
-                        // for functions that have a fixed number of optional args, pad the unfilled args with null nodes
-                        for (int arg2 = arg_num; arg2 < fun.max_args; arg2++)
-                        {
-                            args.Add(new JNode());
-                        }
-                    }
+                    fun.PadToMaxArgs(args);
                     return new Obj_Pos(ApplyArgFunction(withargs), pos);
                 }
             }
-            if (fun.min_args == fun.max_args)
-                throw new RemesPathException($"Expected ')' after argument {arg_num} of function {fun.name} ({fun.max_args} args)");
-            throw new RemesPathException($"Expected ')' after argument {arg_num} of function {fun.name} "
-                                         + $"({fun.min_args} - {fun.max_args} args)");
+            fun.ThrowWrongArgCount(argNum);
+            throw new Exception("unreachable");
         }
 
-        private Obj_Pos ParseProjection(List<object> toks, int pos)
+        private JNode SpreadArrayToArgFunctionArgs(List<JNode> args, JNode curArg, ArgFunction fun)
         {
-            var children = new List<Key_Node>();
-            bool is_object_proj = false;
-            while (pos < toks.Count)
+            if (curArg is CurJson cj)
             {
-                Obj_Pos opo = ParseExprOrScalarFunc(toks, pos);
+                Func<JNode, JNode> spreadFun = (JNode inp) =>
+                {
+                    var inpArr = cj.function(inp);
+                    var argsCalledOnInp = args.Select(x => x is CurJson xcj ? xcj.function(inp) : x).ToList();
+                    return SpreadArrayToArgFunctionArgs(argsCalledOnInp, inpArr, fun);
+                };
+                var spreadCj = new CurJson(fun.OutputType(curArg), spreadFun);
+                return spreadCj;
+            }
+            var argsCpy = args.ToList();
+            if (!(curArg is JArray curArr))
+            {
+                throw new RemesPathException($"Any function argument preceded by '*' must be an array, got type {JNode.FormatDtype(curArg.type)}");
+            }
+            int argNum = argsCpy.Count;
+            curArr.children.ForEach(child =>
+            {
+                fun.CheckType(child, argNum);
+                argsCpy.Add(child);
+                argNum++;
+            });
+            if (argNum < fun.minArgs || argNum > fun.maxArgs)
+                fun.ThrowWrongArgCount(argNum);
+            fun.PadToMaxArgs(argsCpy);
+            var withargs = new ArgFunctionWithArgs(fun, argsCpy);
+            return ApplyArgFunction(withargs);
+        }
+        private Obj_Pos ParseProjection(List<object> toks, int pos, int end, JQueryContext context)
+        {
+            var children = new List<object>();
+            bool isObjectProj = false;
+            while (pos < end)
+            {
+                Obj_Pos opo = ParseExprFunc(toks, pos, end, context);
                 JNode key = (JNode)opo.obj;
                 pos = opo.pos;
-                object nt = PeekNextToken(toks, pos - 1);
-                if (nt is char)
+                object nt = PeekNextToken(toks, pos - 1, end);
+                if (nt is char nd)
                 {
-                    char nd = (char)nt;
                     if (nd == ':')
                     {
-                        if (children.Count > 0 && !is_object_proj)
+                        if (children.Count > 0 && !isObjectProj)
                         {
                             throw new RemesPathException("Mixture of values and key-value pairs in object/array projection");
                         }
-                        if (key.type == Dtype.STR)
+                        if (key.value is string keystr)
                         {
-                            opo = ParseExprOrScalarFunc(toks, pos + 1);
+                            opo = ParseExprFunc(toks, pos + 1, end, context);
                             JNode val = (JNode)opo.obj;
                             pos = opo.pos;
-                            children.Add(new Key_Node((string)key.value, val));
-                            is_object_proj = true;
-                            nt = PeekNextToken(toks, pos - 1);
+                            children.Add(new KeyValuePair<string, JNode>(keystr, val));
+                            isObjectProj = true;
+                            nt = PeekNextToken(toks, pos - 1, end);
                             if (!(nt is char))
                             {
                                 throw new RemesPathException("Key-value pairs in projection must be delimited by ',' and projections must end with '}'.");
@@ -1934,26 +2195,47 @@ namespace JSON_Tools.JSON_Tools
                         }
                         else
                         {
-                            throw new RemesPathException($"Object projection keys must be string, not {JNode.FormatDtype(key.type)}");
+                            throw new RemesPathException($"Object projection keys must be string, not type {JNode.FormatDtype(key.type)} (value {key.ToString()})");
                         }
                     }
                     else
                     {
                         // it's an array projection
-                        children.Add(new Key_Node(0, key));
+                        children.Add(key);
                     }
                     if (nd == '}')
                     {
-                        IEnumerable<Key_Node> proj_func(JNode obj)
+                        if (isObjectProj)
                         {
-                            foreach(Key_Node kv in children)
+                            IEnumerable<object> projFunc(JNode obj)
                             {
-                                object k = kv.obj;
-                                JNode v = kv.node;
-                                yield return new Key_Node(k, (v is CurJson) ? ((CurJson)v).function(obj) : v); 
-                            }
+                                foreach(object child in children)
+                                {
+                                    var kv = (KeyValuePair<string, JNode>)child;
+                                    yield return new KeyValuePair<string, JNode>(
+                                        kv.Key,
+                                        kv.Value is CurJson cj
+                                            ? cj.function(obj)
+                                            : kv.Value.Copy()
+                                    );
+                                }
+                            };
+                            return new Obj_Pos(new Projection(projFunc), pos + 1);
                         }
-                        return new Obj_Pos(new Projection(proj_func), pos + 1);
+                        else
+                        {
+                            IEnumerable<object> projFunc(JNode obj)
+                            {
+                                foreach (object child in children)
+                                {
+                                    var node = (JNode)child;
+                                    yield return node is CurJson cj
+                                        ? cj.function(obj)
+                                        : node.Copy();
+                                }
+                            };
+                            return new Obj_Pos(new Projection(projFunc), pos + 1);
+                        }
                     }
                     if (nd != ',')
                     {
@@ -1968,108 +2250,29 @@ namespace JSON_Tools.JSON_Tools
             }
             throw new RemesPathException("Unterminated projection");
         }
-        #endregion
-        #region ASSIGNMENT_EXPRESSIONS
 
         /// <summary>
-        /// Changes the type and value of v to the type and value of vnew.<br></br>
-        /// Cannot mutate an object or array.
+        /// Consider the operation a -> b.<br></br>
+        /// If b is a function b(x) -> y, a -> b returns b(a).<br></br>
+        /// Otherwise, simply returns b<br></br>
+        /// EXAMPLES:<br></br>
+        /// Let x = [1, 2]<br></br>
+        /// x -> str(len(@)) returns "2"<br></br>
+        /// x -> 3 returns 3
         /// </summary>
-        /// <param name="v"></param>
-        /// <param name="vnew"></param>
-        /// <exception cref="RemesPathException"></exception>
-        private static void TransferJNodeProperties(JNode v, JNode vnew)
+        private Obj_Pos ParseMap(List<object> toks, int pos, int end, JQueryContext context)
         {
-            if (v is JArray)
-            {
-                throw new RemesPathException("Can't mutate an array.");
-            }
-            if (v is JObject)
-            {
-                throw new RemesPathException("Can't mutate an object.");
-            }
-            // v is a scalar
-            if (vnew is JArray || vnew is JObject)
-                throw new RemesPathException("Can't convert a scalar to an array or object.");
-            v.type = vnew.type;
-            v.value = vnew.value;
-        }
-
-        /// <summary>
-        /// An assignment expression is a valid RemesPath expression that contains the token '='.<br></br>
-        /// Assignment expressions are vectorized,<br></br>
-        /// so @ = @ * 2 will:<br></br>
-        /// * change [1, 2, 3] to [2, 4, 6]<br></br>
-        /// * change {"a": 1.5, "b": -4.6} to {"a": 3.0, "b": -9.2}<br></br>
-        /// * change 2 to 4
-        /// </summary>
-        /// <param name="x"></param>
-        /// <param name="op"></param>
-        private JNode ApplyAssignmentExpression(JNode x, JNode op)
-        {
-            if (x is CurJson)
-            {
-                CurJson cjx = (CurJson)x;
-                Func<JNode, JNode> outfunc = (JNode inp) =>
-                {
-                    ApplyAssignmentExpression(cjx.function(inp), op);
-                    return inp;
-                };
-                return new CurJson(Dtype.UNKNOWN, outfunc);
-            }
-            if (op is CurJson cjop)
-            {
-                var func = cjop.function;
-                if (x is JObject)
-                {
-                    foreach (JNode v in ((JObject)x).children.Values)
-                    {
-                        TransferJNodeProperties(v, func(v));
-                    }
-                }
-                else if (x is JArray)
-                {
-                    foreach (JNode v in ((JArray)x).children)
-                    {
-                        TransferJNodeProperties(v, func(v));
-                    }
-                }
-                else // x is a scalar
-                {
-                    JNode xnew = func(x);
-                    if (xnew is JArray || xnew is JObject)
-                        throw new RemesPathException("Can't convert a scalar to an array or object");
-                    x.type = xnew.type;
-                    x.value = xnew.value;
-                }
-                return x;
-            }
-            // op is an unchanging value, so just perform the same change x or all children of x
-            if (x is JObject xobj)
-            {
-                foreach (JNode v in xobj.children.Values)
-                {
-                    TransferJNodeProperties(v, op);
-                }
-            }
-            else if (x is JArray xarr)
-            {
-                foreach (JNode v in xarr.children)
-                {
-                    TransferJNodeProperties(v, op);
-                }
-            }
+            Obj_Pos opo = ParseExprFunc(toks, pos, end, context);
+            JNode val = (JNode)opo.obj;
+            pos = opo.pos;
+            Func<JNode, JNode> outfunc;
+            if (val is CurJson cj)
+                outfunc = cj.function;
             else
-            {
-                // x is a scalar
-                if (op is JArray || op is JObject)
-                    throw new RemesPathException("Can't convert a scalar to an array or object");
-                x.type = op.type;
-                x.value = op.value;
-            }
-            return x;
+                outfunc = x => val.Copy();
+            IEnumerable<object> iterator(JNode x) { yield return outfunc(x); }
+            return new Obj_Pos(new Projection(iterator), pos);
         }
-
         #endregion
         #region EXCEPTION_PRETTIFIER
         // extracts the origin and target of the cast from an InvalidCastException
@@ -2098,20 +2301,32 @@ namespace JSON_Tools.JSON_Tools
             {
                 return rpe.ToString();
             }
+            if (ex is RemesPathIndexOutOfRangeException rpioore)
+            {
+                return rpioore.ToString();
+            }
+            if (ex is SchemaValidationException sve)
+            {
+                return sve.ToString();
+            }
+            if (ex is DsonDumpException dde)
+            {
+                return $"DSON dump error: {dde.Message}";
+            }
             string exstr = ex.ToString();
-            Match is_cast = CAST_REGEX.Match(exstr);
-            if (is_cast.Success)
+            Match isCast = CAST_REGEX.Match(exstr);
+            if (isCast.Success)
             {
                 string ogtype = "";
                 string target = "";
-                switch (is_cast.Groups[1].Value)
+                switch (isCast.Groups[1].Value)
                 {
                     case "Object": ogtype = "JSON object"; break;
                     case "Array": ogtype = "JSON array"; break;
                     case "Node": ogtype = "JSON scalar"; break;
                     case "Char": ogtype = "character"; break;
                 }
-                switch (is_cast.Groups[2].Value)
+                switch (isCast.Groups[2].Value)
                 {
                     case "Object": target = "JSON object"; break;
                     case "Array": target = "JSON array"; break;

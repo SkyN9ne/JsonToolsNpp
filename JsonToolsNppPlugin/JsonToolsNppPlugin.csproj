@@ -8,7 +8,7 @@
     <ProjectTypeGuids>{60dc8134-eba5-43b8-bcc9-bb4bc16c2548};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>NppPluginNET</RootNamespace>
+    <RootNamespace>JSON_Tools</RootNamespace>
     <AssemblyName>JsonTools</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <OldToolsVersion>3.5</OldToolsVersion>
@@ -73,6 +73,12 @@
     <Compile Include="Forms\AboutForm.Designer.cs">
       <DependentUpon>AboutForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="Forms\ErrorForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\ErrorForm.Designer.cs">
+      <DependentUpon>ErrorForm.cs</DependentUpon>
+    </Compile>
     <Compile Include="Forms\FindReplaceForm.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -91,12 +97,26 @@
     <Compile Include="Forms\JsonToCsvForm.Designer.cs">
       <DependentUpon>JsonToCsvForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="Forms\NppFormHelper.cs" />
+    <Compile Include="Forms\RegexSearchForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\RegexSearchForm.Designer.cs">
+      <DependentUpon>RegexSearchForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Forms\SortForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\SortForm.Designer.cs">
+      <DependentUpon>SortForm.cs</DependentUpon>
+    </Compile>
     <Compile Include="Forms\TreeViewer.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Forms\TreeViewer.Designer.cs">
       <DependentUpon>TreeViewer.cs</DependentUpon>
     </Compile>
+    <Compile Include="JSONTools\CsvSniffer.cs" />
     <Compile Include="JSONTools\Dson.cs" />
     <Compile Include="PluginInfrastructure\ClikeStringArray.cs" />
     <Compile Include="PluginInfrastructure\DllExport\DllExportAttribute.cs" />
@@ -168,13 +188,9 @@
     <Compile Include="Properties\Resources.Designer.cs">
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
-    <Compile Include="Properties\Resources1.Designer.cs">
-      <AutoGen>True</AutoGen>
-      <DesignTime>True</DesignTime>
-      <DependentUpon>Resources.resx</DependentUpon>
-    </Compile>
     <!-- other code -->
     <Compile Include="Main.cs" />
+    <Compile Include="JSONTools\IniFileParser.cs" />
     <Compile Include="JSONTools\JNode.cs" />
     <Compile Include="JSONTools\JsonGrepper.cs" />
     <Compile Include="JSONTools\JsonParser.cs" />
@@ -185,14 +201,24 @@
     <Compile Include="JSONTools\RemesPath.cs" />
     <Compile Include="JSONTools\RemesPathFunctions.cs" />
     <Compile Include="JSONTools\RemesPathLexer.cs" />
+    <Compile Include="Properties\Resources1.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
     <Compile Include="Tests\Benchmarker.cs" />
+    <Compile Include="Tests\CsvSnifferTests.cs" />
+    <Compile Include="Tests\IniFileParserTests.cs" />
     <Compile Include="Tests\JsonGrepperTests.cs" />
     <Compile Include="Tests\JsonParserTests.cs" />
     <Compile Include="Tests\JsonSchemaTests.cs" />
     <Compile Include="Tests\JsonSchemaValidatorTests.cs" />
     <Compile Include="Tests\JsonTabularizerTests.cs" />
+    <Compile Include="Tests\FormatPathTests.cs" />
+    <Compile Include="Tests\LruCacheTests.cs" />
     <Compile Include="Tests\RandomJsonTests.cs" />
     <Compile Include="Tests\RemesPathTests.cs" />
+    <Compile Include="Tests\UserInterfaceTests.cs" />
     <Compile Include="Tests\SliceTests.cs" />
     <Compile Include="Tests\DsonTests.cs" />
     <Compile Include="Tests\TestRunner.cs" />
@@ -200,10 +226,11 @@
     <Compile Include="Tests\YamlDumperTests.cs" />
     <Compile Include="Utils\FormStyle.cs" />
     <Compile Include="Utils\LruCache.cs" />
-    <Compile Include="Utils\Misc.cs" />
+    <Compile Include="Utils\Npp.cs" />
     <Compile Include="Utils\NanInf.cs" />
+    <Compile Include="Utils\SelectionManager.cs" />
     <Compile Include="Utils\Settings.cs" />
-    <Compile Include="Utils\Slice.cs" />
+    <Compile Include="Utils\ArrayExtensions.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
@@ -221,6 +248,9 @@
       <DependentUpon>AboutForm.cs</DependentUpon>
       <SubType>Designer</SubType>
     </EmbeddedResource>
+    <EmbeddedResource Include="Forms\ErrorForm.resx">
+      <DependentUpon>ErrorForm.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="Forms\FindReplaceForm.resx">
       <DependentUpon>FindReplaceForm.cs</DependentUpon>
     </EmbeddedResource>
@@ -230,18 +260,48 @@
     <EmbeddedResource Include="Forms\JsonToCsvForm.resx">
       <DependentUpon>JsonToCsvForm.cs</DependentUpon>
     </EmbeddedResource>
+    <EmbeddedResource Include="Forms\RegexSearchForm.resx">
+      <DependentUpon>RegexSearchForm.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Forms\SortForm.resx">
+      <DependentUpon>SortForm.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="Forms\TreeViewer.resx">
       <DependentUpon>TreeViewer.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="Properties\Resources.resx">
       <SubType>Designer</SubType>
-      <Generator>ResXFileCodeGenerator</Generator>
+      <Generator>PublicResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources1.Designer.cs</LastGenOutput>
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
     <!-- icons and such -->
     <Content Include="Properties\star_bmp.bmp" />
+    <None Include="Resources\json tree toolbar darkmode.ico" />
+    <None Include="Resources\json pretty print toolbar darkmode.ico" />
+    <None Include="Resources\json path to position toolbar darkmode.ico" />
+    <None Include="Resources\json compress toolbar darkmode.ico" />
+    <None Include="Resources\json_compress_toolbar_darkmode.ico" />
+    <None Include="Resources\json tree toolbar1.ico" />
+    <None Include="Resources\json pretty print toolbar1.ico" />
+    <None Include="Resources\json path to position toolbar1.ico" />
+    <None Include="Resources\json compress toolbar1.ico" />
+    <None Include="Resources\json tree toolbar.ico" />
+    <None Include="Resources\json compress toolbar.ico" />
+    <None Include="Resources\json pretty print toolbar.ico" />
+    <None Include="Resources\json path to position toolbar.ico" />
+    <None Include="Resources\json tree toolbar bmp.bmp" />
+    <None Include="Resources\json compress toolbar bmp.bmp" />
+    <None Include="Resources\json path to position toolbar bmp.bmp" />
+    <None Include="Resources\json pretty print toolbar bmp.bmp" />
+    <None Include="Resources\json tree icon.bmp" />
+    <None Include="Resources\json compress icon.bmp" />
+    <None Include="Resources\json path to position icon.bmp" />
+    <None Include="Resources\json pretty print icon.bmp" />
+    <None Include="Resources\json pretty print icon.ico" />
+    <None Include="Resources\json path to position icon.ico" />
+    <None Include="Resources\json compress icon.ico" />
     <None Include="Resources\array type icon.PNG" />
     <None Include="Resources\bool type icon.PNG" />
     <None Include="Resources\date type icon.PNG" />

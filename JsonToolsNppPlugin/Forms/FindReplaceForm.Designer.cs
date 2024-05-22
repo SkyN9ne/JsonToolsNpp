@@ -16,6 +16,7 @@
             treeViewer = null;
             if (disposing && (components != null))
             {
+                NppFormHelper.UnregisterFormIfModeless(this, false);
                 components.Dispose();
             }
             base.Dispose(disposing);
@@ -45,10 +46,10 @@
             this.RootTextBox = new System.Windows.Forms.TextBox();
             this.RootTextBoxLabel = new System.Windows.Forms.Label();
             this.AdvancedGroupBox = new System.Windows.Forms.GroupBox();
-            this.IgnoreCaseCheckBox = new System.Windows.Forms.CheckBox();
-            this.AdvancedGroupBoxLabel = new System.Windows.Forms.Label();
-            this.SwapFindReplaceButton = new System.Windows.Forms.Button();
             this.MatchExactlyBox = new System.Windows.Forms.CheckBox();
+            this.IgnoreCaseCheckBox = new System.Windows.Forms.CheckBox();
+            this.SwapFindReplaceButton = new System.Windows.Forms.Button();
+            this.ShowAdvancedOptionsCheckBox = new System.Windows.Forms.CheckBox();
             this.AdvancedGroupBox.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -62,9 +63,10 @@
             this.KeysValsBothBox.Location = new System.Drawing.Point(8, 21);
             this.KeysValsBothBox.Name = "KeysValsBothBox";
             this.KeysValsBothBox.Size = new System.Drawing.Size(133, 24);
-            this.KeysValsBothBox.TabIndex = 3;
-            this.KeysValsBothBox.TabStop = false;
+            this.KeysValsBothBox.TabIndex = 5;
             this.KeysValsBothBox.Visible = false;
+            this.KeysValsBothBox.KeyDown += new System.Windows.Forms.KeyEventHandler(this.FindReplaceForm_KeyDown);
+            this.KeysValsBothBox.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.TextBox_KeyPress);
             this.KeysValsBothBox.KeyUp += new System.Windows.Forms.KeyEventHandler(this.FindReplaceForm_KeyUp);
             // 
             // RecursiveSearchBox
@@ -75,9 +77,8 @@
             this.RecursiveSearchBox.Location = new System.Drawing.Point(8, 99);
             this.RecursiveSearchBox.Name = "RecursiveSearchBox";
             this.RecursiveSearchBox.Size = new System.Drawing.Size(141, 20);
-            this.RecursiveSearchBox.TabIndex = 6;
-            this.RecursiveSearchBox.TabStop = false;
-            this.RecursiveSearchBox.Text = "Recursive search?";
+            this.RecursiveSearchBox.TabIndex = 8;
+            this.RecursiveSearchBox.Text = "Recursive &search?";
             this.RecursiveSearchBox.UseVisualStyleBackColor = true;
             this.RecursiveSearchBox.Visible = false;
             this.RecursiveSearchBox.KeyUp += new System.Windows.Forms.KeyEventHandler(this.FindReplaceForm_KeyUp);
@@ -89,7 +90,7 @@
             this.FindReplaceFormTitle.Location = new System.Drawing.Point(83, 9);
             this.FindReplaceFormTitle.Name = "FindReplaceFormTitle";
             this.FindReplaceFormTitle.Size = new System.Drawing.Size(201, 22);
-            this.FindReplaceFormTitle.TabIndex = 2;
+            this.FindReplaceFormTitle.TabIndex = 13;
             this.FindReplaceFormTitle.Text = "Find/replace in JSON";
             // 
             // FindButton
@@ -98,7 +99,7 @@
             this.FindButton.Location = new System.Drawing.Point(87, 359);
             this.FindButton.Name = "FindButton";
             this.FindButton.Size = new System.Drawing.Size(86, 23);
-            this.FindButton.TabIndex = 8;
+            this.FindButton.TabIndex = 11;
             this.FindButton.Text = "Find all";
             this.FindButton.UseVisualStyleBackColor = true;
             this.FindButton.Click += new System.EventHandler(this.FindButton_Click);
@@ -110,7 +111,7 @@
             this.ReplaceButton.Location = new System.Drawing.Point(187, 359);
             this.ReplaceButton.Name = "ReplaceButton";
             this.ReplaceButton.Size = new System.Drawing.Size(97, 23);
-            this.ReplaceButton.TabIndex = 9;
+            this.ReplaceButton.TabIndex = 12;
             this.ReplaceButton.Text = "Replace all";
             this.ReplaceButton.UseVisualStyleBackColor = true;
             this.ReplaceButton.Click += new System.EventHandler(this.ReplaceButton_Click);
@@ -122,6 +123,7 @@
             this.FindTextBox.Name = "FindTextBox";
             this.FindTextBox.Size = new System.Drawing.Size(196, 22);
             this.FindTextBox.TabIndex = 0;
+            this.FindTextBox.KeyDown += new System.Windows.Forms.KeyEventHandler(this.FindReplaceForm_KeyDown);
             this.FindTextBox.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.TextBox_KeyPress);
             this.FindTextBox.KeyUp += new System.Windows.Forms.KeyEventHandler(this.FindReplaceForm_KeyUp);
             // 
@@ -131,7 +133,7 @@
             this.FindTextBoxLabel.Location = new System.Drawing.Point(242, 55);
             this.FindTextBoxLabel.Name = "FindTextBoxLabel";
             this.FindTextBoxLabel.Size = new System.Drawing.Size(42, 16);
-            this.FindTextBoxLabel.TabIndex = 9;
+            this.FindTextBoxLabel.TabIndex = 14;
             this.FindTextBoxLabel.Text = "Find...";
             // 
             // RegexBox
@@ -142,9 +144,8 @@
             this.RegexBox.Location = new System.Drawing.Point(8, 59);
             this.RegexBox.Name = "RegexBox";
             this.RegexBox.Size = new System.Drawing.Size(182, 20);
-            this.RegexBox.TabIndex = 4;
-            this.RegexBox.TabStop = false;
-            this.RegexBox.Text = "Use regular expressions?";
+            this.RegexBox.TabIndex = 6;
+            this.RegexBox.Text = "Use re&gular expressions?";
             this.RegexBox.UseVisualStyleBackColor = true;
             this.RegexBox.Visible = false;
             this.RegexBox.CheckedChanged += new System.EventHandler(this.RegexBox_CheckedChanged);
@@ -156,9 +157,8 @@
             this.MathBox.Location = new System.Drawing.Point(201, 59);
             this.MathBox.Name = "MathBox";
             this.MathBox.Size = new System.Drawing.Size(127, 20);
-            this.MathBox.TabIndex = 5;
-            this.MathBox.TabStop = false;
-            this.MathBox.Text = "Math expression";
+            this.MathBox.TabIndex = 7;
+            this.MathBox.Text = "&Math expression";
             this.MathBox.UseVisualStyleBackColor = true;
             this.MathBox.Visible = false;
             this.MathBox.CheckedChanged += new System.EventHandler(this.MathBox_CheckedChanged);
@@ -169,7 +169,8 @@
             this.ReplaceTextBox.Location = new System.Drawing.Point(31, 91);
             this.ReplaceTextBox.Name = "ReplaceTextBox";
             this.ReplaceTextBox.Size = new System.Drawing.Size(196, 22);
-            this.ReplaceTextBox.TabIndex = 1;
+            this.ReplaceTextBox.TabIndex = 2;
+            this.ReplaceTextBox.KeyDown += new System.Windows.Forms.KeyEventHandler(this.FindReplaceForm_KeyDown);
             this.ReplaceTextBox.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.TextBox_KeyPress);
             this.ReplaceTextBox.KeyUp += new System.Windows.Forms.KeyEventHandler(this.FindReplaceForm_KeyUp);
             // 
@@ -179,7 +180,7 @@
             this.ReplaceTextBoxLabel.Location = new System.Drawing.Point(242, 94);
             this.ReplaceTextBoxLabel.Name = "ReplaceTextBoxLabel";
             this.ReplaceTextBoxLabel.Size = new System.Drawing.Size(93, 16);
-            this.ReplaceTextBoxLabel.TabIndex = 13;
+            this.ReplaceTextBoxLabel.TabIndex = 15;
             this.ReplaceTextBoxLabel.Text = "Replace with...";
             // 
             // KeysValsBothBoxLabel
@@ -188,7 +189,7 @@
             this.KeysValsBothBoxLabel.Location = new System.Drawing.Point(152, 24);
             this.KeysValsBothBoxLabel.Name = "KeysValsBothBoxLabel";
             this.KeysValsBothBoxLabel.Size = new System.Drawing.Size(160, 16);
-            this.KeysValsBothBoxLabel.TabIndex = 14;
+            this.KeysValsBothBoxLabel.TabIndex = 18;
             this.KeysValsBothBoxLabel.Text = "Search in keys or values?";
             this.KeysValsBothBoxLabel.Visible = false;
             // 
@@ -199,7 +200,8 @@
             this.RootTextBox.Location = new System.Drawing.Point(31, 130);
             this.RootTextBox.Name = "RootTextBox";
             this.RootTextBox.Size = new System.Drawing.Size(196, 22);
-            this.RootTextBox.TabIndex = 2;
+            this.RootTextBox.TabIndex = 3;
+            this.RootTextBox.KeyDown += new System.Windows.Forms.KeyEventHandler(this.FindReplaceForm_KeyDown);
             this.RootTextBox.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.TextBox_KeyPress);
             this.RootTextBox.KeyUp += new System.Windows.Forms.KeyEventHandler(this.FindReplaceForm_KeyUp);
             // 
@@ -214,50 +216,18 @@
             // 
             // AdvancedGroupBox
             // 
-            this.AdvancedGroupBox.Controls.Add(this.MatchExactlyBox);
-            this.AdvancedGroupBox.Controls.Add(this.IgnoreCaseCheckBox);
+            this.AdvancedGroupBox.Controls.Add(this.KeysValsBothBox);
             this.AdvancedGroupBox.Controls.Add(this.KeysValsBothBoxLabel);
             this.AdvancedGroupBox.Controls.Add(this.RegexBox);
-            this.AdvancedGroupBox.Controls.Add(this.RecursiveSearchBox);
-            this.AdvancedGroupBox.Controls.Add(this.KeysValsBothBox);
             this.AdvancedGroupBox.Controls.Add(this.MathBox);
+            this.AdvancedGroupBox.Controls.Add(this.RecursiveSearchBox);
+            this.AdvancedGroupBox.Controls.Add(this.IgnoreCaseCheckBox);
+            this.AdvancedGroupBox.Controls.Add(this.MatchExactlyBox);
             this.AdvancedGroupBox.Location = new System.Drawing.Point(24, 180);
             this.AdvancedGroupBox.Name = "AdvancedGroupBox";
             this.AdvancedGroupBox.Size = new System.Drawing.Size(337, 163);
-            this.AdvancedGroupBox.TabIndex = 17;
+            this.AdvancedGroupBox.TabIndex = 4;
             this.AdvancedGroupBox.TabStop = false;
-            // 
-            // IgnoreCaseCheckBox
-            // 
-            this.IgnoreCaseCheckBox.AutoSize = true;
-            this.IgnoreCaseCheckBox.Location = new System.Drawing.Point(201, 99);
-            this.IgnoreCaseCheckBox.Name = "IgnoreCaseCheckBox";
-            this.IgnoreCaseCheckBox.Size = new System.Drawing.Size(107, 20);
-            this.IgnoreCaseCheckBox.TabIndex = 15;
-            this.IgnoreCaseCheckBox.TabStop = false;
-            this.IgnoreCaseCheckBox.Text = "Ignore case?";
-            this.IgnoreCaseCheckBox.UseVisualStyleBackColor = true;
-            // 
-            // AdvancedGroupBoxLabel
-            // 
-            this.AdvancedGroupBoxLabel.AutoSize = true;
-            this.AdvancedGroupBoxLabel.Location = new System.Drawing.Point(28, 170);
-            this.AdvancedGroupBoxLabel.Name = "AdvancedGroupBoxLabel";
-            this.AdvancedGroupBoxLabel.Size = new System.Drawing.Size(151, 16);
-            this.AdvancedGroupBoxLabel.TabIndex = 15;
-            this.AdvancedGroupBoxLabel.Text = "Show advanced options";
-            this.AdvancedGroupBoxLabel.Click += new System.EventHandler(this.AdvancedGroupBoxLabel_Click);
-            // 
-            // SwapFindReplaceButton
-            // 
-            this.SwapFindReplaceButton.Location = new System.Drawing.Point(303, 60);
-            this.SwapFindReplaceButton.Name = "SwapFindReplaceButton";
-            this.SwapFindReplaceButton.Size = new System.Drawing.Size(49, 28);
-            this.SwapFindReplaceButton.TabIndex = 18;
-            this.SwapFindReplaceButton.Text = "Swap";
-            this.SwapFindReplaceButton.UseVisualStyleBackColor = true;
-            this.SwapFindReplaceButton.Click += new System.EventHandler(this.SwapFindReplaceButton_Click);
-            this.SwapFindReplaceButton.KeyUp += new System.Windows.Forms.KeyEventHandler(this.FindReplaceForm_KeyUp);
             // 
             // MatchExactlyBox
             // 
@@ -266,32 +236,67 @@
             this.MatchExactlyBox.Location = new System.Drawing.Point(96, 130);
             this.MatchExactlyBox.Name = "MatchExactlyBox";
             this.MatchExactlyBox.Size = new System.Drawing.Size(117, 20);
-            this.MatchExactlyBox.TabIndex = 16;
-            this.MatchExactlyBox.TabStop = false;
-            this.MatchExactlyBox.Text = "Match exactly?";
+            this.MatchExactlyBox.TabIndex = 10;
+            this.MatchExactlyBox.Text = "Match &exactly?";
             this.MatchExactlyBox.UseVisualStyleBackColor = true;
             this.MatchExactlyBox.CheckedChanged += new System.EventHandler(this.MatchExactlyBox_CheckedChanged);
+            this.MatchExactlyBox.KeyUp += new System.Windows.Forms.KeyEventHandler(this.FindReplaceForm_KeyUp);
+            // 
+            // IgnoreCaseCheckBox
+            // 
+            this.IgnoreCaseCheckBox.AutoSize = true;
+            this.IgnoreCaseCheckBox.Location = new System.Drawing.Point(201, 99);
+            this.IgnoreCaseCheckBox.Name = "IgnoreCaseCheckBox";
+            this.IgnoreCaseCheckBox.Size = new System.Drawing.Size(107, 20);
+            this.IgnoreCaseCheckBox.TabIndex = 9;
+            this.IgnoreCaseCheckBox.Text = "Ignore &case?";
+            this.IgnoreCaseCheckBox.UseVisualStyleBackColor = true;
+            this.IgnoreCaseCheckBox.KeyUp += new System.Windows.Forms.KeyEventHandler(this.FindReplaceForm_KeyUp);
+            // 
+            // SwapFindReplaceButton
+            // 
+            this.SwapFindReplaceButton.Location = new System.Drawing.Point(303, 60);
+            this.SwapFindReplaceButton.Name = "SwapFindReplaceButton";
+            this.SwapFindReplaceButton.Size = new System.Drawing.Size(49, 28);
+            this.SwapFindReplaceButton.TabIndex = 1;
+            this.SwapFindReplaceButton.Text = "Swap";
+            this.SwapFindReplaceButton.UseVisualStyleBackColor = true;
+            this.SwapFindReplaceButton.Click += new System.EventHandler(this.SwapFindReplaceButton_Click);
+            this.SwapFindReplaceButton.KeyUp += new System.Windows.Forms.KeyEventHandler(this.FindReplaceForm_KeyUp);
+            // 
+            // ShowAdvancedOptionsCheckBox
+            // 
+            this.ShowAdvancedOptionsCheckBox.AutoSize = true;
+            this.ShowAdvancedOptionsCheckBox.Location = new System.Drawing.Point(32, 170);
+            this.ShowAdvancedOptionsCheckBox.Name = "ShowAdvancedOptionsCheckBox";
+            this.ShowAdvancedOptionsCheckBox.Size = new System.Drawing.Size(173, 20);
+            this.ShowAdvancedOptionsCheckBox.TabIndex = 4;
+            this.ShowAdvancedOptionsCheckBox.Text = "Show advanced options";
+            this.ShowAdvancedOptionsCheckBox.UseVisualStyleBackColor = true;
+            this.ShowAdvancedOptionsCheckBox.CheckedChanged += new System.EventHandler(this.ShowAdvancedOptionsCheckBox_CheckedChanged);
+            this.ShowAdvancedOptionsCheckBox.KeyUp += new System.Windows.Forms.KeyEventHandler(this.FindReplaceForm_KeyUp);
             // 
             // FindReplaceForm
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(373, 394);
-            this.Controls.Add(this.SwapFindReplaceButton);
-            this.Controls.Add(this.AdvancedGroupBoxLabel);
-            this.Controls.Add(this.AdvancedGroupBox);
-            this.Controls.Add(this.RootTextBoxLabel);
-            this.Controls.Add(this.RootTextBox);
-            this.Controls.Add(this.ReplaceTextBoxLabel);
-            this.Controls.Add(this.ReplaceTextBox);
             this.Controls.Add(this.FindTextBoxLabel);
             this.Controls.Add(this.FindTextBox);
-            this.Controls.Add(this.ReplaceButton);
+            this.Controls.Add(this.SwapFindReplaceButton);
+            this.Controls.Add(this.ReplaceTextBox);
+            this.Controls.Add(this.ReplaceTextBoxLabel);
+            this.Controls.Add(this.RootTextBoxLabel);
+            this.Controls.Add(this.RootTextBox);
+            this.Controls.Add(this.ShowAdvancedOptionsCheckBox);
+            this.Controls.Add(this.AdvancedGroupBox);
             this.Controls.Add(this.FindButton);
+            this.Controls.Add(this.ReplaceButton);
             this.Controls.Add(this.FindReplaceFormTitle);
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Name = "FindReplaceForm";
             this.Text = "Find/replace in JSON";
+            this.KeyDown += new System.Windows.Forms.KeyEventHandler(this.FindReplaceForm_KeyDown);
             this.KeyUp += new System.Windows.Forms.KeyEventHandler(this.FindReplaceForm_KeyUp);
             this.AdvancedGroupBox.ResumeLayout(false);
             this.AdvancedGroupBox.PerformLayout();
@@ -317,9 +322,9 @@
         private System.Windows.Forms.TextBox RootTextBox;
         private System.Windows.Forms.Label RootTextBoxLabel;
         private System.Windows.Forms.GroupBox AdvancedGroupBox;
-        private System.Windows.Forms.Label AdvancedGroupBoxLabel;
         private System.Windows.Forms.Button SwapFindReplaceButton;
         private System.Windows.Forms.CheckBox IgnoreCaseCheckBox;
         private System.Windows.Forms.CheckBox MatchExactlyBox;
+        private System.Windows.Forms.CheckBox ShowAdvancedOptionsCheckBox;
     }
 }

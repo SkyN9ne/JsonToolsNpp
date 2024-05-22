@@ -21,9 +21,9 @@ namespace JSON_Tools.JSON_Tools
     /// </summary>
     class Dson
     {
-        public static string KeyValuePairDelims = ",.!?";
+        public static readonly string KeyValuePairDelims = ",.!?";
 
-        public static string[] ArrayPairDelims = new string[] { "and", "also" };
+        public static readonly string[] ArrayPairDelims = new string[] { "and", "also" };
 
         private static string FormatInteger(long val)
         {
@@ -71,11 +71,10 @@ namespace JSON_Tools.JSON_Tools
                     sb.Append("such ");
                     int delimIdx = 0;
                     JObject obj = (JObject)json;
-                    foreach (string key in obj.children.Keys)
+                    foreach (KeyValuePair<string, JNode> kv in obj.children)
                     {
-                        JNode value = obj[key];
-                        sb.Append($"\"{key}\" is ");
-                        sb.Append(Dump(value));
+                        sb.Append($"{JNode.StrToString(kv.Key, true)} is ");
+                        sb.Append(Dump(kv.Value));
                         sb.Append(KeyValuePairDelims[delimIdx % 4] + " ");
                         delimIdx++;
                     }
@@ -92,8 +91,9 @@ namespace JSON_Tools.JSON_Tools
                 case Dtype.FLOAT:
                     // floating point numbers are formatted
                     // such that fractional part, exponent, and integer part are all octal
-                    string valstr = ((double)json.value).ToString();
-                    if (valstr.EndsWith("y") || valstr.EndsWith("N"))
+                    double val = (double)json.value;
+                    string valstr = json.ToString();
+                    if (double.IsInfinity(val) || double.IsNaN(val))
                         // Infinity and NaN are not in the DSON specification
                         throw new DsonDumpException($"{valstr} is fake number, can't understand. So silly, wow");
                     StringBuilder partSb = new StringBuilder();

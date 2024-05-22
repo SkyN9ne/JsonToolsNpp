@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using JSON_Tools.JSON_Tools;
 using JSON_Tools.Utils;
 using Kbg.NppPluginNET.PluginInfrastructure;
@@ -7,7 +8,7 @@ namespace JSON_Tools.Tests
 {
     public class JsonSchemaMakerTester
     {
-        public static void Test()
+        public static bool Test()
         {
             JsonParser jsonParser = new JsonParser();
             string[][] testcases = new string[][]
@@ -191,47 +192,39 @@ namespace JSON_Tools.Tests
                 },
             };
             int ii = 0;
-            int tests_failed = 0;
-            JObject base_schema_j = (JObject)JsonSchemaMaker.SchemaToJNode(JsonSchemaMaker.BASE_SCHEMA);
+            int testsFailed = 0;
+            JObject baseSchemaJ = (JObject)JsonSchemaMaker.SchemaToJNode(JsonSchemaMaker.BASE_SCHEMA);
             foreach (string[] test in testcases)
             {
                 string inp = test[0];
-                string desired_out = test[1];
+                string desiredOut = test[1];
                 ii++;
                 JNode jinp = jsonParser.Parse(inp);
-                JObject desired_schema = (JObject)jsonParser.Parse(desired_out);
-                foreach (string k in base_schema_j.children.Keys)
+                JObject desiredSchema = (JObject)jsonParser.Parse(desiredOut);
+                foreach (KeyValuePair<string, JNode> kv in baseSchemaJ.children)
                 {
-                    desired_schema[k] = base_schema_j[k];
+                    desiredSchema[kv.Key] = kv.Value;
                 }
-                string desired_sch_str = desired_schema.ToString();
+                string desiredSchStr = desiredSchema.ToString();
                 JNode schema = new JNode();
                 try
                 {
                     schema = JsonSchemaMaker.GetSchema(jinp);
-                    try
+                    if (!schema.TryEquals(desiredSchema, out _))
                     {
-                        if (!schema.Equals(desired_schema))
-                        {
-                            tests_failed++;
-                            Npp.AddLine($"Expected the schema for {inp} to be\n{desired_sch_str}\nInstead got\n{schema.ToString()}");
-                        }
-                    }
-                    catch
-                    {
-                        // probably because of something like trying to compare an array to a non-array
-                        tests_failed++;
-                        Npp.AddLine($"Expected the schema for {inp} to be\n{desired_sch_str}\nInstead got {schema.ToString()}");
+                        testsFailed++;
+                        Npp.AddLine($"Expected the schema for {inp} to be\n{desiredSchStr}\nInstead got\n{schema.ToString()}");
                     }
                 }
                 catch (Exception e)
                 {
-                    tests_failed++;
-                    Npp.AddLine($"Expected the schema for {inp} to be\n{desired_sch_str}\nInstead raised exception {e}");
+                    testsFailed++;
+                    Npp.AddLine($"Expected the schema for {inp} to be\n{desiredSchStr}\nInstead raised exception {e}");
                 }
             }
-            Npp.AddLine($"Failed {tests_failed} tests.");
-            Npp.AddLine($"Passed {ii - tests_failed} tests.");
+            Npp.AddLine($"Failed {testsFailed} tests.");
+            Npp.AddLine($"Passed {ii - testsFailed} tests.");
+            return testsFailed > 0;
         }
     }
 }

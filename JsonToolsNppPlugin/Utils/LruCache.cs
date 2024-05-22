@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 
 namespace JSON_Tools.Utils
 {
@@ -11,14 +10,15 @@ namespace JSON_Tools.Utils
     {
         public int capacity;
         public Dictionary<K, V> cache;
-        public LinkedList<K> use_order;
+        public LinkedList<K> useOrder;
         public bool isFull { get { return cache.Count == capacity; } }
+        public int Count { get { return cache.Count; } }
 
         public LruCache(int capacity = 64)
         {
             cache = new Dictionary<K, V>();
             this.capacity = capacity;
-            this.use_order = new LinkedList<K>();
+            this.useOrder = new LinkedList<K>();
         }
 
         /// <summary>
@@ -29,24 +29,31 @@ namespace JSON_Tools.Utils
         /// <param name="query"></param>
         /// <param name="result"></param>
         /// <returns></returns>
-        public V Get(K key)
+        public bool TryGetValue(K key, out V existingValue)
         {
-            if (cache.TryGetValue(key, out V existing_value))
-            {
-                return existing_value;
-            }
-            return default(V);
+            if (cache.TryGetValue(key, out existingValue))
+                return true;
+            existingValue = default(V);
+            return false;
+        }
+
+        public bool ContainsKey(K key)
+        {
+            return cache.ContainsKey(key);
         }
 
         /// <summary>
-        /// If the key is already in the cache, do nothing.
+        /// Return value and add key-value pair if key was not already in cache.<br></br>
+        /// Otherwise, do nothing and return the value already associated with key.
         /// </summary>
         /// <param name="key"></param>
         /// <param name="value"></param>
-        public void Add(K key, V value)
+        public V SetDefault(K key, V value)
         {
-            if (cache.ContainsKey(key)) { return; }
+            if (cache.TryGetValue(key, out V existing))
+                return existing;
             this[key] = value;
+            return value;
         }
 
         public V this[K key]
@@ -60,20 +67,45 @@ namespace JSON_Tools.Utils
             /// </summary>
             set
             {
-                if (use_order.Count == capacity)
+                if (useOrder.Count == capacity)
                 {
-                    K oldest_query = use_order.First();
-                    use_order.RemoveFirst();
-                    cache.Remove(oldest_query);
+                    K oldestQuery = useOrder.First();
+                    useOrder.RemoveFirst();
+                    cache.Remove(oldestQuery);
                 }
-                use_order.AddLast(key);
+                useOrder.AddLast(key);
                 cache[key] = value;
             }
         }
 
         public K OldestKey()
         {
-            return use_order.First();
+            if (useOrder.Count == 0)
+                return default(K);
+            return useOrder.First();
+        }
+
+        public K NewestKey()
+        {
+            if (useOrder.Count == 0)
+                return default(K);
+            return useOrder.Last();
+        }
+
+        /// <summary>
+        /// return the value associated with the most recently added key in LruCache,
+        /// then remove that key from the cache
+        /// </summary>
+        /// <returns></returns>
+        public V PopNewest()
+        {
+            if (useOrder.Count == 0)
+                return default(V);
+            K lastKey = useOrder.Last();
+            V lastVal = cache[lastKey];
+            cache.Remove(lastKey);
+            useOrder.RemoveLast();
+            return lastVal;
         }
     }
 }

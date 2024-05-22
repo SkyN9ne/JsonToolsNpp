@@ -145,6 +145,11 @@ namespace Kbg.NppPluginNET.PluginInfrastructure
         void GotoPos(int caret);
 
         /// <summary>
+        /// same as GotoPos, except that if caret is in the middle of a "\r\n", it goes before the '\r' 
+        /// </summary>
+        void GoToLegalPos(int caret);
+
+        /// <summary>
         /// Set the selection anchor to a position. The anchor is the opposite
         /// end of the selection from the caret.
         /// (Scintilla feature 2026)
@@ -909,12 +914,12 @@ namespace Kbg.NppPluginNET.PluginInfrastructure
         unsafe void SetText(string text);
 
         /// <summary>
-        /// Retrieve all the text in the document.
+        /// Retrieve all the text in the document (or the first length chars of the document).
         /// Returns number of characters retrieved.
         /// Result is NUL-terminated.
         /// (Scintilla feature 2182)
         /// </summary>
-        unsafe string GetText(int length);
+        unsafe string GetText(int length = -1);
 
         /// <summary>Retrieve the number of characters in the document. (Scintilla feature 2183)</summary>
         int GetTextLength();

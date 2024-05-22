@@ -1,16 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using JSON_Tools.JSON_Tools;
 using JSON_Tools.Utils;
-using Kbg.NppPluginNET.PluginInfrastructure;
 
 namespace JSON_Tools.Tests
 {
 	public class JsonTabularizerTester
 	{
-		public static void Test()
+		public static bool Test()
 		{
 			var testcases = new string[][]
 			{
@@ -422,199 +420,211 @@ namespace JSON_Tools.Tests
 					"."
 				}
 			};
-			JsonParser jsonParser = new JsonParser();
+			JsonParser jsonParser = new JsonParser(LoggerLevel.JSON5);
 			JsonTabularizer tabularizer = new JsonTabularizer();
-			int tests_failed = 0;
+			int testsFailed = 0;
 			int ii = 0;
 			foreach (string[] test in testcases)
 			{
 				string inp = test[0];
-				string desired_out = test[1];
-				string key_sep = test[2];
+				string desiredOut = test[1];
+				string keySep = test[2];
+				JNode jinp;
 				ii++;
-				JNode jinp = jsonParser.Parse(inp);
-				Dictionary<string, object> schema = JsonSchemaMaker.BuildSchema(jinp);
-				//Npp.AddText($"schema for {inp}:\n{JsonSchemaMaker.SchemaToJNode(schema).ToString()}");
-				JNode jdesired_out = jsonParser.Parse(desired_out);
-				JNode result = new JNode();
-				string base_message = $"Expected BuildTable({jinp.ToString()})\nto return\n{jdesired_out.ToString()}\n";
 				try
 				{
-					result = tabularizer.BuildTable(jinp, schema, key_sep);
-					try
+					jinp = jsonParser.Parse(inp);
+				}
+				catch (Exception ex)
+				{
+					testsFailed++;
+					Npp.AddLine($"While trying to parse {inp}, got exception {RemesParser.PrettifyException(ex)}");
+					continue;
+				}
+				Dictionary<string, object> schema = JsonSchemaMaker.BuildSchema(jinp);
+				//Npp.AddText($"schema for {inp}:\n{JsonSchemaMaker.SchemaToJNode(schema).ToString()}");
+				JNode jdesiredOut = jsonParser.Parse(desiredOut);
+				JNode result = new JNode();
+				string baseMessage = $"Expected BuildTable({jinp.ToString()})\nto return\n{jdesiredOut.ToString()}\n";
+				try
+				{
+					result = tabularizer.BuildTable(jinp, schema, keySep);
+					if (!jdesiredOut.TryEquals(result, out _))
 					{
-						if (!jdesired_out.Equals(result))
-						{
-							tests_failed++;
-							Npp.AddLine($"{base_message}Instead returned\n{result.ToString()}");
-						}
-					}
-					catch
-					{
-						tests_failed++;
-						Npp.AddLine($"{base_message}Instead returned\n{result.ToString()}");
+						testsFailed++;
+						Npp.AddLine($"{baseMessage}Instead returned\n{result.ToString()}");
 					}
 				}
 				catch (Exception ex)
 				{
-					tests_failed++;
-					Npp.AddLine($"{base_message}Instead threw exception\n{ex}");
+					testsFailed++;
+					Npp.AddLine($"{baseMessage}Instead threw exception\n{ex}");
 				}
 			}
 
 			// TEST CSV CREATION
-			JsonParser fancyParser = new JsonParser(true);
+			JsonParser fancyParser = new JsonParser(LoggerLevel.JSON5);
 
-			var csv_testcases = new object[][]
+			var csvTestcases = new (string inp, string desiredOut, char delim, char quoteChar, string[] header, bool boolsAsInts, string eol)[]
 			{
-				new object[] { "[{\"a\": 1, \"b\": \"a\"}, {\"a\": 2, \"b\": \"b\"}]", "a,b\n1,a\n2,b\n", ',', '"', null, false },
-				new object[] {
+				( "[{\"a\": 1, \"b\": \"a\"}, {\"a\": 2, \"b\": \"b\"}]", "a,b\r\n1,a\r\n2,b\r\n", ',', '"', null, false, "\r\n" ),
+				( "[{\"a\": 1, \"b\": \"a\"}, {\"a\": 2, \"b\": \"b\"}]", "a,b\r1,a\r2,b\r", ',', '"', null, false, "\r" ),
+				( "[{\"a\": 1, \"b\": \"a\"}, {\"a\": 2, \"b\": \"b\"}]", "a,b\n1,a\n2,b\n", ',', '"', null, false, "\n" ),
+				(
 				"[{\"a\": 1, \"b\": 2, \"c\": 3}, {\"a\": 2, \"b\": 3, \"d\": 4}, {\"a\": 1, \"b\": 2}]",
-				"a,b,c,d\n" + // test missing entries in some rows
-				"1,2,3,\n" +
-				"2,3,,4\n" +
-				"1,2,,\n",
-				',', '"', null, false
-				},
-				new object[] {
+				"a,b,c,d\r\n" + // test missing entries in some rows
+				"1,2,3,\r\n" +
+				"2,3,,4\r\n" +
+				"1,2,,\r\n",
+				',', '"', null, false, "\r\n"
+				),
+				(
 				"[" +
-					"{\"a\": 1, \"b\": \"[1, 2, 3]\", \"c\": \"{\\\"d\\\": \\\"y\\\"}\"}," +
-					"{\"a\": 2, \"b\": \"[4, 5, 6]\", \"c\": \"{\\\"d\\\": \\\"z\\\"}\"}" +
-				"]", // test stringified iterables
-				"a\tb\tc\n" +
-				"1\t[1, 2, 3]\t{\"d\": \"y\"}\n" +
-				"2\t[4, 5, 6]\t{\"d\": \"z\"}\n",
-				'\t', '"', null, false
-				},
-				new object[] { "[{\"a\": null, \"b\": 1.0}, {\"a\": \"blah\", \"b\": NaN}]", // nulls and NaNs
-				"a,b\n,1.0\nblah,NaN\n",
-				',', '"', null, false
-				},
-				new object[] { "[{\"a\": 1, \"b\": \"a\"}, {\"a\": 2, \"b\": \"b\"}]", "a\tb\n1\ta\n2\tb\n", '\t', '"', null, false },
-				new object[] { "[{\"a\": 1, \"b\": \"a\"}, {\"a\": 2, \"b\": \"b\"}]", "a,b\n1,a\n2,b\n", ',', '\'', null, false },
-				new object[] { "[{\"a\": 1, \"b\": \"a\"}, {\"a\": 2, \"b\": \"b\"}]", "a\tb\n1\ta\n2\tb\n", '\t', '\'', null, false },
-				new object[] { "[{\"a\": 1, \"b\": \"a\"}, {\"a\": 2, \"b\": \"b\"}]", "b,a\na,1\nb,2\n", ',', '"', new string[]{"b", "a"}, false },
-				new object[] { "[{\"a\": 1, \"b\": \"a\"}, {\"a\": 2, \"b\": \"b\"}]", "b\ta\na\t1\nb\t2\n", '\t', '"', new string[]{"b", "a"}, false },
-				new object[] { "[{\"a\": 1, \"b\": \"a,b\"}, {\"a\": 2, \"b\": \"c\"}]", "a,b\n1,\"a,b\"\n2,c\n", ',', '"', null, false },
-				new object[] { "[{\"a\": 1, \"b\": \"a,b\"}, {\"a\": 2, \"b\": \"c\"}]", "a,b\n1,'a,b'\n2,c\n", ',', '\'', null, false }, // delims in values
-				new object[] { "[{\"a,b\": 1, \"b\": \"a\"}, {\"a,b\": 2, \"b\": \"b\"}]", "\"a,b\",b\n1,a\n2,b\n", ',', '"', null, false },
-				new object[] { "[{\"a,b\": 1, \"b\": \"a\"}, {\"a,b\": 2, \"b\": \"b\"}]", "'a,b',b\n1,a\n2,b\n", ',', '\'', null, false },
-				new object[] { "[{\"a,b\": 1, \"b\": \"a\"}, {\"a,b\": 2, \"b\": \"b\"}]", // internal delims in column header
-				"b,\"a,b\"\na,1\nb,2\n",
-				',', '"', new string[]{"b", "a,b"}, false
-				},
-				new object[] { "[{\"a\tb\": 1, \"b\": \"a\"}, {\"a\tb\": 2, \"b\": \"b\"}]", // \t in column header when \t is delim
-				"a\\tb\tb\n1\ta\n2\tb\n",
-				'\t', '"', null, false
-				},
-				new object[] { "[{\"a\": 1, \"b\": \"a\tb\"}, {\"a\": 2, \"b\": \"c\"}]",
-				"a\tb\n1\t\"a\tb\"\n2\tc\n",
-				'\t', '"', null, false
-				},
-				new object[]{"[{\"a\": 1}, {\"a\": 2}, {\"a\": 3}]",
-				"a\n1\n2\n3\n", // one column
-				',', '"', null, false},
-				new object[]{"[{\"a\": 1, \"b\": 2, \"c\": 3}, {\"a\": 2, \"b\": 3, \"c\": 4}, {\"a\": 3, \"b\": 4, \"c\": 5}]",
-				"a|b|c\n1|2|3\n2|3|4\n3|4|5\n",
-				'|', '"', null, false},
-				new object[]{"[{\"date\": \"1999-01-03\", \"cost\": 100.5, \"num\": 13}, {\"date\": \"2000-03-15\", \"cost\": 157.0, \"num\": 17}]",
-				"cost,date,num\n100.5,1999-01-03,13\n157.0,2000-03-15,17\n", // dates
-				',', '"', null, false},
-				new object[]{"[{\"date\": \"1999-01-03 07:03:29\", \"cost\": 100.5, \"num\": 13}]",
-				"cost,date,num\n100.5,1999-01-03 07:03:29,13\n", // datetimes
-				',', '"', null, false },
-				new object[]{"[{\"name\": \"\\\"Dr. Blutentharst\\\"\", \"phone number\": \"420-997-1043\"}," +
+                    "{\"a\": 1, \"b\": \"[1, 2, 3]\", \"c\": \"{\\\"d\\\": \\\"y\\\"}\"}," +
+                    "{\"a\": 2, \"b\": \"[4, 5, 6]\", \"c\": \"{\\\"d\\\": \\\"z\\\"}\"}" +
+                "]", // test stringified iterables
+				"a\tb\tc\r\n" +
+				"1\t[1, 2, 3]\t\"{\"\"d\"\": \"\"y\"\"}\"\r\n" +
+				"2\t[4, 5, 6]\t\"{\"\"d\"\": \"\"z\"\"}\"\r\n",
+				'\t', '"', null, false, "\r\n"
+				),
+				( "[{\"a\": null, \"b\": 1.0}, {\"a\": \"blah\", \"b\": NaN}]", // nulls and NaNs
+				"a,b\r\n,1.0\r\nblah,NaN\r\n",
+				',', '"', null, false, "\r\n"
+				),
+				( "[{\"a\": 1, \"b\": \"a\"}, {\"a\": 2, \"b\": \"b\"}]", "a\tb\r\n1\ta\r\n2\tb\r\n", '\t', '"', null, false, "\r\n" ),
+				( "[{\"a\": 1, \"b\": \"a\"}, {\"a\": 2, \"b\": \"b\"}]", "a,b\r\n1,a\r\n2,b\r\n", ',', '\'', null, false, "\r\n" ),
+				( "[{\"a\": 1, \"b\": \"a\"}, {\"a\": 2, \"b\": \"b\"}]", "a\tb\r\n1\ta\r\n2\tb\r\n", '\t', '\'', null, false, "\r\n" ),
+				( "[{\"a\": 1, \"b\": \"a\"}, {\"a\": 2, \"b\": \"b\"}]", "b,a\r\na,1\r\nb,2\r\n", ',', '"', new string[]{"b", "a"}, false, "\r\n" ),
+				( "[{\"a\": 1, \"b\": \"a\"}, {\"a\": 2, \"b\": \"b\"}]", "b\ta\r\na\t1\r\nb\t2\r\n", '\t', '"', new string[]{"b", "a"}, false, "\r\n" ),
+				( "[{\"a\": 1, \"b\": \"a,b\"}, {\"a\": 2, \"b\": \"c\"}]", "a,b\r\n1,\"a,b\"\r\n2,c\r\n", ',', '"', null, false, "\r\n" ),
+				( "[{\"a\": 1, \"b\": \"a,b\"}, {\"a\": 2, \"b\": \"c\"}]", "a,b\r\n1,'a,b'\r\n2,c\r\n", ',', '\'', null, false, "\r\n" ), // delims in values
+				( "[{\"a\": 1, \"b\": \"a,b\"}, {\"a\": 2, \"b\": \"c\"}]", "a,b\r1,'a,b'\r2,c\r", ',', '\'', null, false, "\r" ), // delims in values
+				( "[{\"a\": 1, \"b\": \"a,b\"}, {\"a\": 2, \"b\": \"c\"}]", "a,b\n1,'a,b'\n2,c\n", ',', '\'', null, false, "\n" ), // delims in values
+				( "[{\"a,b\": 1, \"b\": \"a\"}, {\"a,b\": 2, \"b\": \"b\"}]", "\"a,b\",b\r\n1,a\r\n2,b\r\n", ',', '"', null, false, "\r\n" ),
+				( "[{\"a,b\": 1, \"b\": \"a\"}, {\"a,b\": 2, \"b\": \"b\"}]", "'a,b',b\r\n1,a\r\n2,b\r\n", ',', '\'', null, false, "\r\n" ),
+				( "[{\"a,b\": 1, \"b\": \"a\"}, {\"a,b\": 2, \"b\": \"b\"}]", // internal delims in column header
+				"b,\"a,b\"\r\na,1\r\nb,2\r\n",
+				',', '"', new string[]{"b", "a,b"}, false, "\r\n"
+				),
+				( "[{\"a\\tb\": 1, \"b\": \"a\"}, {\"a\\tb\": 2, \"b\": \"b\"}]", // \t in column header when \t is delim
+				"a\\tb\tb\r\n1\ta\r\n2\tb\r\n",
+				'\t', '"', null, false, "\r\n"
+				),
+				( "[{\"a\": 1, \"b\": \"a\\tb\"}, {\"a\": 2, \"b\": \"c\"}]",
+				"a\tb\r\n1\t\"a\tb\"\r\n2\tc\r\n",
+				'\t', '"', null, false, "\r\n"
+				),
+				("[{\"a\": 1}, {\"a\": 2}, {\"a\": 3}]",
+				"a\r\n1\r\n2\r\n3\r\n", // one column
+				',', '"', null, false, "\r\n"
+				),
+				("[{\"a\": 1, \"b\": 2, \"c\": 3}, {\"a\": 2, \"b\": 3, \"c\": 4}, {\"a\": 3, \"b\": 4, \"c\": 5}]",
+				"a|b|c\r\n1|2|3\r\n2|3|4\r\n3|4|5\r\n",
+				'|', '"', null, false, "\r\n"
+				),
+				("[{\"date\": \"1999-01-03\", \"cost\": 100.5, \"num\": 13}, {\"date\": \"2000-03-15\", \"cost\": 157.0, \"num\": 17}]",
+				"cost,date,num\r\n100.5,1999-01-03,13\r\n157.0,2000-03-15,17\r\n", // dates
+				',', '"', null, false, "\r\n"
+				),
+				("[{\"date\": \"1999-01-03 07:03:29\", \"cost\": 100.5, \"num\": 13}]",
+				"cost,date,num\r\n100.5,1999-01-03 07:03:29,13\r\n", // datetimes
+				',', '"', null, false, "\r\n"
+				),
+				("[{\"name\": \"The Exalted \\\"Samuel Blutentharst\\\" of Doom\", \"phone number\": \"420-997-1043\"}," +
 				"{\"name\": \"\\\"Fjordlak the Deranged\\\"\", \"phone number\": \"blo-od4-blud\"}]", // internal quote chars
-				"name,phone number\n\"Dr. Blutentharst\",420-997-1043\n\"Fjordlak the Deranged\",blo-od4-blud\n",
-				',', '"', null, false},
-				new object[]{"[{\"a\": \"new\\nline\", \"b\": 1}]", // internal newlines
-				"a,b\nnew\\nline,1\n",
-				',', '"', null, false
-				},
-				new object[]{
-				"[{\"a\": true, \"b\": \"foo\"}, {\"a\": false, \"b\": \"bar\"}]", // boolean values with bools_as_ints false
-				"a,b\ntrue,foo\nfalse,bar\n",
-				',', '"', null, false
-				},
-				new object[]{
-				"[{\"a\": true, \"b\": \"foo\"}, {\"a\": false, \"b\": \"bar\"}]", // boolean values with bools_as_ints true
-				"a,b\n1,foo\n0,bar\n",
-				',', '"', null, true
-				},
-				new object[]{
+				"name,phone number\r\n\"The Exalted \"\"Samuel Blutentharst\"\" of Doom\",420-997-1043\r\n\"\"\"Fjordlak the Deranged\"\"\",blo-od4-blud\r\n",
+				',', '"', null, false, "\r\n"
+				),
+				("[{\"a\": \"new\\r\\nline\", \"b\": 1}]", // internal newlines
+				"a,b\r\n\"new\r\nline\",1\r\n",
+				',', '"', null, false, "\r\n"
+				),
+                ("[{\"a\": \"new\\rline\", \"b\": 1}]", // internal newlines
+				"a,b\r\"new\rline\",1\r",
+                ',', '"', null, false, "\r"
+                ),
+                ("[{\"a\": \"n,ew\\nl'i\\rne\", \"b\": 1, \"c\": \"a\\r\\nbc\"}]", // internal newlines and quote chars (use '\'') and delims
+				"a,b,c\r\n'n,ew\nl''i\rne',1,'a\r\nbc'\r\n",
+                ',', '\'', null, false, "\r\n"
+                ),
+                (
+				"[{\"a\": true, \"b\": \"foo\"}, {\"a\": false, \"b\": \"bar\"}]", // boolean values with boolsAsInts false
+				"a,b\r\ntrue,foo\r\nfalse,bar\r\n",
+				',', '"', null, false, "\r\n"
+				),
+				(
+				"[{\"a\": true, \"b\": \"foo\"}, {\"a\": false, \"b\": \"bar\"}]", // boolean values with boolsAsInts true
+				"a,b\r\n1,foo\r\n0,bar\r\n",
+				',', '"', null, true, "\r\n"
+				),
+				(
 				"[" +
 					"{\"a\": 1, \"b\": 1, \"c.d\": \"y\"}," +
 					"{\"a\": true, \"b\": 7}," +
 					"{\"a\": true, \"b\": 8}," +
 					"{\"a\": false, \"b\": 9}" +
 				"]", // missing keys
-				"a,b,c.d\n1,1,y\ntrue,7,\ntrue,8,\nfalse,9,\n",
-				',', '"', null, false
-				},
-				new object[]
-                {
-				"[{\"a\": \"\\u042f\", \"b\": 1, \"c\": \"a\"}," + // backward R cyrillic char
+				"a,b,c.d\r\n1,1,y\r\ntrue,7,\r\ntrue,8,\r\nfalse,9,\r\n",
+				',', '"', null, false, "\r\n"
+				),
+				("[{\"a\": \"\\u042f\", \"b\": 1, \"c\": \"a\"}," + // backward R cyrillic char
                  "{\"a\": \"\\u25d0\", \"b\": 2, \"c\": \"b\"}," + // circle where half black and half white
                  "{\"a\": \"\\u1ed3\", \"b\": 3, \"c\": \"c\"}," + // o with hat and accent
                  "{\"a\": \"\\uff6a\", \"b\": 4, \"c\": \"d\"}, " + // HALFWIDTH KATAKANA LETTER SMALL E
                  "{\"a\": \"\\u8349\", \"b\": 5, \"c\": \"e\"}," + // Taiwanese char for "grass"
 				 "{\"a\": \"Love \\u8349. It \\ud83d\\ude00\", \"b\": 5, \"c\": \"e\"}," + // ascii to non-ascii back to ascii and then to emoji
                  "{\"a\": \"\\ud83d\\ude00\", \"b\": 6, \"c\": \"f\"}]", // smily face (\U0001F600)
-				"a,b,c\n" +
-                "\u042f,1,a\n" +
-                "\u25d0,2,b\n" +
-                "\u1ed3,3,c\n" +
-				"\uff6a,4,d\n" +
-                "\u8349,5,e\n" +
-				"Love \u8349. It \ud83d\ude00,5,e\n" +
-                "\ud83d\ude00,6,f\n",
-				',', '"', null, false
-				},
+				"a,b,c\r\n" +
+                "\u042f,1,a\r\n" +
+                "\u25d0,2,b\r\n" +
+                "\u1ed3,3,c\r\n" +
+				"\uff6a,4,d\r\n" +
+                "\u8349,5,e\r\n" +
+				"Love \u8349. It \ud83d\ude00,5,e\r\n" +
+                "\ud83d\ude00,6,f\r\n",
+				',', '"', null, false, "\r\n"
+				),
 			};
-			foreach (object[] test in csv_testcases)
+			foreach ((string inp, string desiredOut, char delim, char quote, string[] header, bool boolsAsInts, string eol) in csvTestcases)
 			{
-				string inp = (string)test[0];
-				string desired_out = (string)test[1];
-				char delim = (char)test[2];
-				char quote_char = (char)test[3];
-				string[] header = (string[])test[4];
-				bool bools_as_ints = (bool)test[5];
 				ii++;
 				JNode table = fancyParser.Parse(inp);
 				string result = "";
-				string head_str = header == null ? "null" : '[' + string.Join(", ", header) + ']';
-				string message_without_desired = $"With default strategy, expected TableToCsv({inp}, '{delim}', '{quote_char}', {head_str})\nto return\n";
-				string base_message = $"{message_without_desired}{desired_out}\n";
-				int msg_len = Encoding.UTF8.GetByteCount(desired_out) + 1 + message_without_desired.Length;
+				string headStr = header == null ? "null" : '[' + string.Join(", ", header) + ']';
+				string escapedEol = JNode.StrToString(eol, true);
+				string messageWithoutDesired = $"With default strategy, expected TableToCsv({inp}, '{delim}', '{quote}', {headStr}, {escapedEol})\nto return\n";
+				string baseMessage = $"{messageWithoutDesired}{desiredOut}\n";
+				int msgLen = Encoding.UTF8.GetByteCount(desiredOut) + 1 + messageWithoutDesired.Length;
 				try
 				{
-					result = tabularizer.TableToCsv((JArray)table, delim, quote_char, header, bools_as_ints);
-					int result_len = Encoding.UTF8.GetByteCount(result);
+					result = tabularizer.TableToCsv((JArray)table, delim, quote, eol, header, boolsAsInts);
+					int resultLen = Encoding.UTF8.GetByteCount(result);
 					try
 					{
-						if (!desired_out.Equals(result))
+						if (!desiredOut.Equals(result))
 						{
-							tests_failed++;
-							Npp.editor.AppendText(msg_len + 17 + result_len + 1, $"{base_message}Instead returned\n{result}\n");
+							testsFailed++;
+							Npp.editor.AppendText(msgLen + 17 + resultLen + 1, $"{baseMessage}Instead returned\n{result}\n");
 						}
 					}
 					catch (Exception ex)
 					{
-						tests_failed++;
-						int ex_len = ex.ToString().Length;
-						Npp.editor.AppendText(msg_len + 17 + result_len + 21 + ex_len + 1, 
-							$"{base_message}Instead returned\n{result}\nand threw exception\n{ex}\n");
+						testsFailed++;
+						int exLen = ex.ToString().Length;
+						Npp.editor.AppendText(msgLen + 17 + resultLen + 21 + exLen + 1, 
+							$"{baseMessage}Instead returned\n{result}\nand threw exception\n{ex}\n");
 					}
 				}
 				catch (Exception ex)
 				{
-					tests_failed++;
-					Npp.AddLine($"{base_message}Instead threw exception\n{ex}");
+					testsFailed++;
+					Npp.AddLine($"{baseMessage}Instead threw exception\n{ex}");
 				}
 			}
 			// TEST NO_RECURSION setting
-			var no_recursion_tabularizer = new JsonTabularizer(JsonTabularizerStrategy.NO_RECURSION);
-			var no_recursion_testcases = new string[][]
+			var noRecursionTabularizer = new JsonTabularizer(JsonTabularizerStrategy.NO_RECURSION);
+			var noRecursionTestcases = new string[][]
 			{
 				new string[]{
 				"[" +
@@ -661,44 +671,36 @@ namespace JSON_Tools.Tests
 				},
 			};
 
-			foreach (string[] test in no_recursion_testcases)
+			foreach (string[] test in noRecursionTestcases)
 			{
 				string inp = test[0];
-				string desired_out = test[1];
+				string desiredOut = test[1];
 				ii++;
 				JNode jinp = jsonParser.Parse(inp);
 				Dictionary<string, object> schema = JsonSchemaMaker.BuildSchema(jinp);
 				//Npp.AddText($"schema for {inp}:\n{JsonSchemaMaker.SchemaToJNode(schema).ToString()}");
-				JNode jdesired_out = jsonParser.Parse(desired_out);
+				JNode jdesiredOut = jsonParser.Parse(desiredOut);
 				JNode result = new JNode();
-				string base_message = $"With recursive search turned off, expected BuildTable({jinp.ToString()})\nto return\n{jdesired_out.ToString()}\n";
+				string baseMessage = $"With recursive search turned off, expected BuildTable({jinp.ToString()})\nto return\n{jdesiredOut.ToString()}\n";
 				try
 				{
-					result = no_recursion_tabularizer.BuildTable(jinp, schema);
-					try
+					result = noRecursionTabularizer.BuildTable(jinp, schema);
+					if (!jdesiredOut.TryEquals(result, out _))
 					{
-						if (!jdesired_out.Equals(result))
-						{
-							tests_failed++;
-							Npp.AddLine($"{base_message}Instead returned\n{result.ToString()}");
-						}
-					}
-					catch
-					{
-						tests_failed++;
-						Npp.AddLine($"{base_message}Instead returned\n{result.ToString()}");
+						testsFailed++;
+						Npp.AddLine($"{baseMessage}Instead returned\n{result.ToString()}");
 					}
 				}
 				catch (Exception ex)
 				{
-					tests_failed++;
-					Npp.AddLine($"{base_message}Instead threw exception\n{ex}");
+					testsFailed++;
+					Npp.AddLine($"{baseMessage}Instead threw exception\n{ex}");
 				}
 			}
 
 			// TEST FULL_RECURSIVE setting
-			var full_recursive_tabularizer = new JsonTabularizer(JsonTabularizerStrategy.FULL_RECURSIVE);
-			var full_recursive_testcases = new string[][]
+			var fullRecursiveTabularizer = new JsonTabularizer(JsonTabularizerStrategy.FULL_RECURSIVE);
+			var fullRecursiveTestcases = new string[][]
 			{
 				new string[]{
 				"[" +
@@ -721,44 +723,36 @@ namespace JSON_Tools.Tests
 				"]"
 				},
 			};
-			foreach (string[] test in full_recursive_testcases)
+			foreach (string[] test in fullRecursiveTestcases)
 			{
 				string inp = test[0];
-				string desired_out = test[1];
+				string desiredOut = test[1];
 				ii++;
 				JNode jinp = jsonParser.Parse(inp);
 				Dictionary<string, object> schema = JsonSchemaMaker.BuildSchema(jinp);
 				//Npp.AddText($"schema for {inp}:\n{JsonSchemaMaker.SchemaToJNode(schema).ToString()}");
-				JNode jdesired_out = jsonParser.Parse(desired_out);
+				JNode jdesiredOut = jsonParser.Parse(desiredOut);
 				JNode result = new JNode();
-				string base_message = $"With full recursive strategy, expected BuildTable({jinp.ToString()})\nto return\n{jdesired_out.ToString()}\n";
+				string baseMessage = $"With full recursive strategy, expected BuildTable({jinp.ToString()})\nto return\n{jdesiredOut.ToString()}\n";
 				try
 				{
-					result = full_recursive_tabularizer.BuildTable(jinp, schema);
-					try
+					result = fullRecursiveTabularizer.BuildTable(jinp, schema);
+					if (!jdesiredOut.TryEquals(result, out _))
 					{
-						if (!jdesired_out.Equals(result))
-						{
-							tests_failed++;
-							Npp.AddLine($"{base_message}Instead returned\n{result.ToString()}");
-						}
-					}
-					catch
-					{
-						tests_failed++;
-						Npp.AddLine($"{base_message}Instead returned\n{result.ToString()}");
+						testsFailed++;
+						Npp.AddLine($"{baseMessage}Instead returned\n{result.ToString()}");
 					}
 				}
 				catch (Exception ex)
 				{
-					tests_failed++;
-					Npp.AddLine($"{base_message}Instead threw exception\n{ex}");
+					testsFailed++;
+					Npp.AddLine($"{baseMessage}Instead threw exception\n{ex}");
 				}
 			}
 
 			// TEST STRINGIFY_ITERABLES setting
-			var stringify_iterables_tabularizer = new JsonTabularizer(JsonTabularizerStrategy.STRINGIFY_ITERABLES);
-			var stringify_iterables_testcases = new string[][]
+			var stringifyIterablesTabularizer = new JsonTabularizer(JsonTabularizerStrategy.STRINGIFY_ITERABLES);
+			var stringifyIterablesTestcases = new string[][]
 			{
 				new string[]{
 				"[" +
@@ -788,12 +782,12 @@ namespace JSON_Tools.Tests
 					"}" +
 				"]", // literal quote chars in string in stringified object
 				"[" +
-					"{\"foo\": \"bar\", \"baz\": " +
-						"\"{\\\"retweet_count\\\": 5, \\\"retweeted\\\": false, " +
-						"\\\"source\\\": \\\"<a href=\\\\\\\"http://twitter.com/download/android\\\\\\\" rel=\\\\\\\"nofollow\\\\\\\">Twitter for Android</a>\\\"}\"" +
-					"}" +
-				"]"
-				},
+                    "{\"foo\": \"bar\", \"baz\": " +
+                        "\"{\\\"retweet_count\\\": 5, \\\"retweeted\\\": false, " +
+                        "\\\"source\\\": \\\"<a href=\\\\\\\"http://twitter.com/download/android\\\\\\\" rel=\\\\\\\"nofollow\\\\\\\">Twitter for Android</a>\\\"}\"" +
+                    "}" +
+                "]"
+                },
 				new string[]{ // object with child arrays, one of which contains sub-iterables
 					"{\"a\": 1.5, \"b\": [[1], [\"x\"], {\"y\": \"z\"}], \"c\": [\"a\", \"b\", \"c\"]}",
 					"[" +
@@ -833,43 +827,36 @@ namespace JSON_Tools.Tests
                 },
         };
 
-			foreach (string[] test in stringify_iterables_testcases)
+			foreach (string[] test in stringifyIterablesTestcases)
 			{
 				string inp = test[0];
-				string desired_out = test[1];
+				string desiredOut = test[1];
 				ii++;
 				JNode jinp = jsonParser.Parse(inp);
 				Dictionary<string, object> schema = JsonSchemaMaker.BuildSchema(jinp);
 				//Npp.AddText($"schema for {inp}:\n{JsonSchemaMaker.SchemaToJNode(schema).ToString()}");
-				JNode jdesired_out = jsonParser.Parse(desired_out);
+				JNode jdesiredOut = jsonParser.Parse(desiredOut);
 				JNode result = new JNode();
-				string base_message = $"With stringified iterables, expected BuildTable({jinp.ToString()})\nto return\n{jdesired_out.ToString()}\n";
+				string baseMessage = $"With stringified iterables, expected BuildTable({jinp.ToString()})\nto return\n{jdesiredOut.ToString()}\n";
 				try
 				{
-					result = stringify_iterables_tabularizer.BuildTable(jinp, schema);
-					try
+					result = stringifyIterablesTabularizer.BuildTable(jinp, schema);
+					if (!jdesiredOut.TryEquals(result, out _))
 					{
-						if (!jdesired_out.Equals(result))
-						{
-							tests_failed++;
-							Npp.AddLine($"{base_message}Instead returned\n{result.ToString()}");
-						}
-					}
-					catch
-					{
-						tests_failed++;
-						Npp.AddLine($"{base_message}Instead returned\n{result.ToString()}");
+						testsFailed++;
+						Npp.AddLine($"{baseMessage}Instead returned\n{result.ToString()}");
 					}
 				}
 				catch (Exception ex)
 				{
-					tests_failed++;
-					Npp.AddLine($"{base_message}Instead threw exception\n{ex}");
+					testsFailed++;
+					Npp.AddLine($"{baseMessage}Instead threw exception\n{ex}");
 				}
 			}
 			
-			Npp.AddLine($"Failed {tests_failed} tests.");
-			Npp.AddLine($"Passed {ii - tests_failed} tests.");
+			Npp.AddLine($"Failed {testsFailed} tests.");
+			Npp.AddLine($"Passed {ii - testsFailed} tests.");
+			return testsFailed > 0;
 		}
 	}
 }

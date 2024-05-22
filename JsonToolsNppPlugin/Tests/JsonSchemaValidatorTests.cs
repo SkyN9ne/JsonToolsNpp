@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 using JSON_Tools.JSON_Tools;
 using JSON_Tools.Utils;
@@ -13,21 +14,21 @@ namespace JSON_Tools.Tests
         {
             public string json;
             public string schema;
-            public bool should_validate;
+            public bool shouldValidate;
 
-            public SchemaValidatesJson(string json, string schema, bool should_validate)
+            public SchemaValidatesJson(string json, string schema, bool shouldValidate)
             {
                 this.json = json;
                 this.schema = schema;
-                this.should_validate = should_validate;
+                this.shouldValidate = shouldValidate;
             }
         }
 
-        public static void Test()
+        public static bool Test()
         {
             JsonParser jsonParser = new JsonParser();
-            string[] basic_jsons = new string[]{ "[]", "{}", "1", "0.5", "null", "false", "\"a\"" };
-            string[] basic_type_schemas = new string[]
+            string[] basicJsons = new string[]{ "[]", "{}", "1", "0.5", "null", "false", "\"a\"" };
+            string[] basicTypeSchemas = new string[]
             {
                 "{\"type\": \"array\"}",
                 "{\"type\": \"boolean\"}",
@@ -38,45 +39,45 @@ namespace JSON_Tools.Tests
                 "{\"type\": \"string\"}",
             };
             int ii = 0;
-            int tests_failed = 0;
-            foreach (string basic_json_str in basic_jsons)
+            int testsFailed = 0;
+            foreach (string basicJsonStr in basicJsons)
             {
-                JNode basic_json = jsonParser.Parse(basic_json_str);
+                JNode basicJson = jsonParser.Parse(basicJsonStr);
                 ii += 2;
-                var vp = JsonSchemaValidator.Validates(basic_json, new JObject());
-                if (vp != null)
+                bool validates = JsonSchemaValidator.Validates(basicJson, new JObject(), 0, out List<JsonLint> lints);
+                if (!validates && lints.Count > 0)
                 {
-                    tests_failed++;
-                    Npp.AddLine($"Expected {basic_json_str} to validate under empty schema {{}}, but instead got validation problem {vp}");
+                    testsFailed++;
+                    Npp.AddLine($"Expected {basicJsonStr} to validate under empty schema {{}}, but instead got validation problem {lints[0]}");
                 }
-                vp = JsonSchemaValidator.Validates(basic_json, new JNode(true, Dtype.BOOL, 0));
-                if (vp != null)
+                validates = JsonSchemaValidator.Validates(basicJson, new JNode(true, Dtype.BOOL, 0), 0, out lints);
+                if (!validates && lints.Count > 0)
                 {
-                    tests_failed++;
-                    Npp.AddLine($"Expected {basic_json_str} to validate under the trivial schema `true`, but instead got validation problem {vp}");
+                    testsFailed++;
+                    Npp.AddLine($"Expected {basicJsonStr} to validate under the trivial schema `true`, but instead got validation problem {lints[0]}");
                 }
-                foreach (string basic_schema in basic_type_schemas)
+                foreach (string basicSchema in basicTypeSchemas)
                 {
                     ii++;
-                    JObject schema = (JObject)jsonParser.Parse(basic_schema);
-                    var schema_type = JsonSchemaMaker.typeNameToDtype[(string)schema["type"].value];
-                    bool should_validate = JsonSchemaValidator.TypeValidates(
-                        basic_json.type, schema_type
+                    JObject schema = (JObject)jsonParser.Parse(basicSchema);
+                    var schemaType = JsonSchemaMaker.typeNameToDtype[(string)schema["type"].value];
+                    bool shouldValidate = JsonSchemaValidator.TypeValidates(
+                        basicJson.type, schemaType
                     );
-                    vp = JsonSchemaValidator.Validates(basic_json, schema);
-                    if (should_validate && (vp != null))
+                    validates = JsonSchemaValidator.Validates(basicJson, schema, 0, out lints);
+                    if (shouldValidate && (!validates && lints.Count > 0))
                     {
-                        tests_failed++;
-                        Npp.AddLine($"Expected {basic_json_str} validation under schema {basic_schema} to validate, but it returned {vp}");
+                        testsFailed++;
+                        Npp.AddLine($"Expected {basicJsonStr} validation under schema {basicSchema} to validate, but it returned {lints[0]}");
                     }
-                    else if (!should_validate && (vp == null))
+                    else if (!shouldValidate && (validates && lints.Count == 0))
                     {
-                        tests_failed++;
-                        Npp.AddLine($"Expected {basic_json_str} validation under schema {basic_schema} to NOT validate, but it did validate");
+                        testsFailed++;
+                        Npp.AddLine($"Expected {basicJsonStr} validation under schema {basicSchema} to NOT validate, but it did validate");
                     }
                 }
             }
-            string object_anyof_schema = "{\"type\": \"object\", \"properties\": " +
+            string objectAnyofSchema = "{\"type\": \"object\", \"properties\": " +
                 "{\"a\":" +
                     "{\"anyOf\": [" +
                         "{\"type\": [\"string\", \"integer\"]}," +
@@ -87,7 +88,7 @@ namespace JSON_Tools.Tests
                     "]}" +
                 "}" +
             "}"; // matches an object with key a and a value that's an int array, a string, an integer, or an object with key b and int value
-            var defs_ref_example_schema = "{" +
+            var defsRefExampleSchema = "{" +
                 "\"type\": \"object\"," +
                 "\"definitions\": {" +
                     "\"foo\": {\"type\": \"array\", \"items\": {\"type\": \"number\"}}," +
@@ -101,7 +102,7 @@ namespace JSON_Tools.Tests
                 // but we should be prepared for both
                 "}" +
             "}";
-            var recursive_defs_ref_schema = "{" +
+            var recursiveDefsRefSchema = "{" +
                 "\"$defs\": {" +
                     "\"foo\": {" +
                         "\"type\": \"object\"," +
@@ -117,7 +118,7 @@ namespace JSON_Tools.Tests
                 "}," +
                 "\"$ref\": \"#/$defs/foo\"" +
             "}";
-            var contains_schema_min_and_max = "{" +
+            var containsSchemaMinAndMax = "{" +
                 "\"type\": \"array\"," +
                 "\"items\": {\"type\": \"number\"}," +
                 "\"contains\": {\"type\": \"string\"}," +
@@ -125,6 +126,99 @@ namespace JSON_Tools.Tests
             "}";
             var testcases = new List<SchemaValidatesJson>
             {
+                /********
+                 * maximum, minimum, exclusiveMaximum, exclusiveMinimum for numbers and integers
+                ********/
+                new SchemaValidatesJson("5", "{\"type\": \"number\", \"minimum\": 5, \"maximum\": 7, \"exclusiveMinimum\": -100, \"exclusiveMaximum\": 100}",
+                    true // check that integer is validated as subset of number with min and max
+                ),
+                new SchemaValidatesJson("5.5", "{\"type\": \"integer\", \"minimum\": 5}",
+                    false // check that schema type is still validated when minimum is in place
+                ),
+                new SchemaValidatesJson("5.5", "{\"type\": \"integer\", \"maximum\": 6}",
+                    false // check that schema type is still validated when maximum is in place
+                ),
+                new SchemaValidatesJson("5.5", "{\"type\": \"integer\", \"minimum\": 4, \"maximum\": 6}",
+                    false // check that schema type is still validated with minimum and maximum
+                ),
+                new SchemaValidatesJson("5", "{\"type\": \"integer\", \"minimum\": 5}",
+                    true
+                ),
+                new SchemaValidatesJson("5", "{\"type\": \"integer\", \"maximum\": 6}",
+                    true
+                ),
+                new SchemaValidatesJson("5", "{\"type\": \"integer\", \"minimum\": 4, \"maximum\": 6}",
+                    true
+                ),
+                new SchemaValidatesJson("4", "{\"type\": \"integer\", \"minimum\": 5}",
+                    false
+                ),
+                new SchemaValidatesJson("7", "{\"type\": \"integer\", \"maximum\": 6}",
+                    false
+                ),
+                new SchemaValidatesJson("3", "{\"type\": \"integer\", \"minimum\": 4, \"maximum\": 6}",
+                    false
+                ),
+                new SchemaValidatesJson("7", "{\"type\": \"integer\", \"minimum\": 4, \"maximum\": 6}",
+                    false
+                ),
+                new SchemaValidatesJson("5.5", "{\"type\": \"integer\", \"exclusiveMinimum\": 5}",
+                    false // check that schema type is still validated when exclusiveMinimum is in place
+                ),
+                new SchemaValidatesJson("5.5", "{\"type\": \"integer\", \"exclusiveMaximum\": 6}",
+                    false // check that schema type is still validated when exclusiveMaximum is in place
+                ),
+                new SchemaValidatesJson("5.5", "{\"type\": \"integer\", \"exclusiveMinimum\": 4, \"exclusiveMaximum\": 6}",
+                    false // check that schema type is still validated with exclusiveMinimum and exclusiveMaximum
+                ),
+                new SchemaValidatesJson("5", "{\"type\": \"integer\", \"exclusiveMinimum\": 4}",
+                    true
+                ),
+                new SchemaValidatesJson("5", "{\"type\": \"integer\", \"exclusiveMaximum\": 6}",
+                    true
+                ),
+                new SchemaValidatesJson("5", "{\"type\": \"integer\", \"exclusiveMinimum\": 4, \"exclusiveMaximum\": 6}",
+                    true
+                ),
+                new SchemaValidatesJson("5", "{\"type\": \"integer\", \"exclusiveMinimum\": 5}",
+                    false
+                ),
+                new SchemaValidatesJson("6", "{\"type\": \"integer\", \"exclusiveMaximum\": 6}",
+                    false
+                ),
+                new SchemaValidatesJson("4", "{\"type\": \"integer\", \"exclusiveMinimum\": 4, \"exclusiveMaximum\": 6}",
+                    false
+                ),
+                new SchemaValidatesJson("7", "{\"type\": \"integer\", \"exclusiveMinimum\": 4, \"exclusiveMaximum\": 6}",
+                    false
+                ),
+                new SchemaValidatesJson("4", "{\"type\": \"integer\", \"exclusiveMinimum\": 5}",
+                    false
+                ),
+                new SchemaValidatesJson("7", "{\"type\": \"integer\", \"exclusiveMaximum\": 6}",
+                    false
+                ),
+                new SchemaValidatesJson("4", "{\"type\": \"integer\", \"minimum\": 4, \"exclusiveMaximum\": 6}",
+                    true // mix and match minimum/maximum and exclusiveMinimum/exclusiveMaximum
+                ),
+                new SchemaValidatesJson("6", "{\"type\": \"integer\", \"exclusiveMinimum\": 4, \"maximum\": 6}",
+                    true
+                ),
+                new SchemaValidatesJson("3", "{\"type\": \"integer\", \"minimum\": 4, \"exclusiveMaximum\": 6}",
+                    false
+                ),
+                new SchemaValidatesJson("7", "{\"type\": \"integer\", \"exclusiveMinimum\": 4, \"maximum\": 6}",
+                    false
+                ),
+                new SchemaValidatesJson("6", "{\"type\": \"integer\", \"minimum\": 4, \"exclusiveMaximum\": 6}",
+                    false
+                ),
+                new SchemaValidatesJson("4", "{\"type\": \"integer\", \"exclusiveMinimum\": 4, \"maximum\": 6}",
+                    false
+                ),
+                /***********
+                 * arrays with mixed types
+                 ***********/
                 new SchemaValidatesJson(
                     "[1, 2]", "{\"type\": \"array\", \"items\": {\"type\": \"integer\"}}",
                     true // test that int array validates under int array schema 
@@ -151,6 +245,9 @@ namespace JSON_Tools.Tests
                     "{\"type\": \"array\", \"items\": {\"type\": [\"number\", \"string\"]}}",
                     false // test that mixed-scalar-type array DOES NOT validate against matching array of scalar types in schema
                 ),
+                /***********
+                 * enums
+                 ***********/
                 new SchemaValidatesJson(
                     "[0, 1, 2]",
                     "{\"type\": \"array\", \"items\": {\"type\": \"integer\", \"enum\": [0, 1, 2]}}",
@@ -176,6 +273,24 @@ namespace JSON_Tools.Tests
                     "{\"type\": \"array\", \"items\": {\"type\": \"string\", \"enum\": [\"one\", \"two\"]}}",
                     false // test string enum with non-string values
                 ),
+                new SchemaValidatesJson(
+                    "[\"one\", 1.0, \"two\", 2]",
+                    "{\"type\": \"array\", \"items\": {\"enum\": [\"one\", \"two\", 1.0, 2]}}",
+                    true // test enum with mixed types
+                ),
+                new SchemaValidatesJson(
+                    "[\"one\", 1.0, \"two\", 2]",
+                    "{\"type\": \"object\", \"items\": {\"enum\": [\"one\", \"three\", 1.0, 2]}}",
+                    false // test enum with mixed types, where a value doesn't match
+                ),
+                new SchemaValidatesJson(
+                    "[\"one\", 1, \"two\", 2]",
+                    "{\"type\": \"object\", \"items\": {\"enum\": [\"one\", \"two\", 1.0, 2]}}",
+                    false // test enum with mixed types, where a value is equal but has the wrong type
+                ),
+                /**
+                 * minItems and maxItems keywords
+                 **/
                 new SchemaValidatesJson(
                     "[1, 2, 3]",
                     "{\"type\": \"array\", \"items\": {\"type\": \"integer\"}, \"minItems\": 1}",
@@ -206,6 +321,9 @@ namespace JSON_Tools.Tests
                     "{\"type\": \"array\", \"items\": {\"type\": \"integer\"}, \"maxItems\": 4}",
                     true // test maxItems with exactly valid length
                 ),
+                /**
+                 * misc tests
+                 **/
                 new SchemaValidatesJson(
                     "[1, 2, [3, 4.0], \"5\"]",
                     "{\"type\": \"array\", \"items\": {\"anyOf\": [{\"type\": [\"string\", \"integer\"]}, {\"type\": \"array\", \"items\": {\"type\": \"number\"}}]}}",
@@ -304,22 +422,22 @@ namespace JSON_Tools.Tests
                 ),
                 new SchemaValidatesJson(
                     "{\"a\": 1}",
-                    object_anyof_schema,
+                    objectAnyofSchema,
                     true // object with anyOf key where value matches first option
                 ),
                 new SchemaValidatesJson(
                     "{\"a\": {\"b\": 1}}",
-                    object_anyof_schema,
+                    objectAnyofSchema,
                     true // object with anyOf key where value matches middle option
                 ),
                 new SchemaValidatesJson(
                     "{\"a\": [1, 2.55]}",
-                    object_anyof_schema,
+                    objectAnyofSchema,
                     true // object with anyOf key where value matches last option
                 ),
                 new SchemaValidatesJson(
                     "{\"a\": 1.5}",
-                    object_anyof_schema,
+                    objectAnyofSchema,
                     false // object with anyOf key where value does not match any option
                 ),
                 new SchemaValidatesJson(
@@ -530,59 +648,59 @@ namespace JSON_Tools.Tests
                 *********************/
                 new SchemaValidatesJson(
                     "{\"foo1\": [1], \"bar1\": [\"a\"], \"foo2\": [2.5], \"bar2\": [\"b\"]}",
-                    defs_ref_example_schema,
+                    defsRefExampleSchema,
                     true
                 ),
                 new SchemaValidatesJson(
                     "{\"foo1\": [null], \"bar1\": [\"a\"], \"foo2\": [2.5], \"bar2\": [\"b\"]}",
-                    defs_ref_example_schema,
+                    defsRefExampleSchema,
                     false
                 ),
                 /***** self-referential schemas with $defs and $ref ****/
                 new SchemaValidatesJson(
                     "{\"bar\": 0, \"foo\": {\"bar\": 1, \"foo\": {\"bar\": 2, \"foo\": {\"bar\": 3, \"foo\": null}}}}",
-                    recursive_defs_ref_schema,
+                    recursiveDefsRefSchema,
                     true
                 ),
                 new SchemaValidatesJson( // recursion missing required key
                     "{\"bar\": 0, \"foo\": {\"baz\": 1, \"foo\": {\"bar\": 2, \"foo\": {\"bar\": 3, \"foo\": null}}}}",
-                    recursive_defs_ref_schema,
+                    recursiveDefsRefSchema,
                     false
                 ),
                 new SchemaValidatesJson( // base case of recursion is wrong
                     "{\"bar\": 0, \"foo\": {\"bar\": 1, \"foo\": {\"bar\": 2, \"foo\": {\"bar\": 3, \"foo\": 1}}}}",
-                    recursive_defs_ref_schema,
+                    recursiveDefsRefSchema,
                     false
                 ),
                 new SchemaValidatesJson( // a type in one of the recursions is wrong
                     "{\"bar\": 0, \"foo\": {\"bar\": 1.5, \"foo\": null}}",
-                    recursive_defs_ref_schema,
+                    recursiveDefsRefSchema,
                     false
                 ),
                 /*** contains, minContains, maxContains keywords ***/
                 new SchemaValidatesJson(
                     "[1, 2, 3, \"\"]",
-                    contains_schema_min_and_max,
+                    containsSchemaMinAndMax,
                     false
                 ),
                 new SchemaValidatesJson(
                     "[1, 2, 3, \"\", \"\"]",
-                    contains_schema_min_and_max,
+                    containsSchemaMinAndMax,
                     true
                 ),
                 new SchemaValidatesJson(
                     "[1, 2, 3, \"\", \"\", \"\"]",
-                    contains_schema_min_and_max,
+                    containsSchemaMinAndMax,
                     true
                 ),
                 new SchemaValidatesJson(
                     "[1, 2, 3, \"\", \"\", \"\", \"\", \"\"]",
-                    contains_schema_min_and_max,
+                    containsSchemaMinAndMax,
                     false
                 ),
                 new SchemaValidatesJson(
                     "[1, 2, 3, \"\", \"\", \"\", \"\", \"\"]",
-                    contains_schema_min_and_max,
+                    containsSchemaMinAndMax,
                     false
                 ),
                 new SchemaValidatesJson(
@@ -625,36 +743,96 @@ namespace JSON_Tools.Tests
                     "}",
                     true
                 ),
+                /*******
+                 * minLength and maxLength string keywords
+                 *******/
+                new SchemaValidatesJson(
+                    "\"abc\"", "{\"type\": \"string\", \"minLength\": 2}", true
+                ),
+                new SchemaValidatesJson(
+                    "\"abc\"", "{\"type\": \"string\", \"minLength\": 4}", false
+                ),
+                new SchemaValidatesJson(
+                    "\"abc\"", "{\"type\": \"string\", \"maxLength\": 2}", false
+                ),
+                new SchemaValidatesJson(
+                    "\"abc\"", "{\"type\": \"string\", \"maxLength\": 4}", true
+                ),
+                new SchemaValidatesJson(
+                    "\"abc\"", "{\"type\": \"string\", \"minLength\": 2, \"maxLength\": 4}", true
+                ),
+                new SchemaValidatesJson(
+                    "\"abc\"", "{\"type\": \"string\", \"minLength\": 4, \"maxLength\": 5}", false
+                ),
+                new SchemaValidatesJson( // pattern and minLength
+                    "\"abc\"", "{\"type\": \"string\", \"pattern\": \"[abc]+\", \"minLength\": 3}", true
+                ),
+                new SchemaValidatesJson(
+                    "\"abc\"", "{\"type\": \"string\", \"pattern\": \"[abc]+\", \"minLength\": 4}", false
+                ),
+                new SchemaValidatesJson( // pattern and maxLength
+                    "\"abc\"", "{\"type\": \"string\", \"pattern\": \"[abc]+\", \"maxLength\": 4}", true
+                ),
+                new SchemaValidatesJson(
+                    "\"abc\"", "{\"type\": \"string\", \"pattern\": \"[abc]+\", \"maxLength\": 2}", false
+                ),
+                new SchemaValidatesJson( // minLength and maxLength are fine but pattern isn't
+                    "\"abc\"", "{\"type\": \"string\", \"pattern\": \"z\", \"minLength\": 2, \"maxLength\": 4}", false
+                ),
             };
-            string random_tweet_text = null, tweet_schema_text = null, bad_random_tweet_text = null;
-            string testfiles_path = @"plugins\JsonTools\testfiles\";
+            string randomTweetText = null, tweetSchemaText = null, badRandomTweetText = null;
+            string testfilesPath = Path.Combine(Npp.pluginDllDirectory, "testfiles") + "\\";
+            JNode badRandomTweet = null;
             try
             {
-                random_tweet_text = File.ReadAllText(testfiles_path + "random_tweet.json");
+                randomTweetText = File.ReadAllText(testfilesPath + "random_tweet.json");
                 // make a copy of the tweet that violates the schema
-                JNode bad_random_tweet = jsonParser.Parse(random_tweet_text);
+                badRandomTweet = jsonParser.Parse(randomTweetText);
+            }
+            catch (Exception ex)
+            {
+                Npp.AddLine($"While trying to parse {testfilesPath}random_tweet.json\r\n" +
+                            $"got exception {ex}");
+            }
+            try
+            {
                 var rparser = new RemesParser();
                 // set a value deep in the tweet to an invalid type
-                rparser.Search("@[1].entities.media[1].sizes.small.w = `THIS SHOULD BE AN INTEGER`", bad_random_tweet, out bool _);
-                bad_random_tweet_text = bad_random_tweet.ToString(); bad_random_tweet.ToString();
+                rparser.Search("@[1].entities.media[1].sizes.small.w = `THIS SHOULD BE AN INTEGER`", badRandomTweet);
+                badRandomTweetText = badRandomTweet.ToString(); badRandomTweet.ToString();
             }
-            catch
+            catch (Exception ex)
             {
-                Npp.AddLine($"File not found at {testfiles_path}random_tweet.json");
+                Npp.AddLine($"While trying to mutate the JSON from {testfilesPath}randomTweet.json\r\n" +
+                            $"got exception {ex}");
             }
             try
             {
-                tweet_schema_text = File.ReadAllText(testfiles_path + "tweet_schema.json");
+                tweetSchemaText = File.ReadAllText(testfilesPath + "tweet_schema.json");
             }
             catch
             {
-                Npp.AddLine($"File not found at {testfiles_path}tweet_schema.json");
+                Npp.AddLine($"File not found at {testfilesPath}tweet_schema.json");
             }
-            if (tweet_schema_text != null && random_tweet_text != null)
+            if (tweetSchemaText != null && randomTweetText != null)
             {
-                testcases.Add(new SchemaValidatesJson(random_tweet_text, tweet_schema_text, true));
-                if (bad_random_tweet_text != null)
-                    testcases.Add(new SchemaValidatesJson(bad_random_tweet_text, tweet_schema_text, false));
+                testcases.Add(new SchemaValidatesJson(randomTweetText, tweetSchemaText, true));
+                if (badRandomTweetText != null)
+                    testcases.Add(new SchemaValidatesJson(badRandomTweetText, tweetSchemaText, false));
+            }
+            string kitchenSinkExample = null, kitchenSinkSchema = null;
+            try
+            {
+                kitchenSinkSchema = File.ReadAllText(testfilesPath + "small\\kitchen_sink_schema.json");
+                kitchenSinkExample = File.ReadAllText(testfilesPath + "small\\kitchen_sink_example.json");
+            }
+            catch
+            {
+                Npp.AddLine("Kitchen sink schema or example not found");
+            }
+            if (kitchenSinkSchema != null && kitchenSinkExample != null)
+            {
+                testcases.Add(new SchemaValidatesJson(kitchenSinkExample, kitchenSinkSchema, true));
             }
             foreach (SchemaValidatesJson test in testcases)
             {
@@ -680,40 +858,45 @@ namespace JSON_Tools.Tests
                 ii++;
                 try
                 {
-                    var vp = JsonSchemaValidator.Validates(json, schema);
-                    if (vp != null)
+                    bool validates = JsonSchemaValidator.Validates(json, schema, int.MaxValue, out List<JsonLint> lints);
+                    if (!validates)
                     {
                         ii++;
-                        try
+                        for (int jj = 0; jj < lints.Count; jj++)
                         {
-                            vp.ToString();
-                        }
-                        catch (Exception ex_ToString)
-                        {
-                            tests_failed++;
-                            Npp.AddLine($"Validation of {test.json} failed under schema {test.schema}, but calling the ToString() method of its ValidationProblem's raised exception {ex_ToString}");
+                            try
+                            {
+                                JsonLint lint = lints[jj];
+                                lint.ToString();
+                            }
+                            catch (Exception ex_ToString)
+                            {
+                                testsFailed++;
+                                Npp.AddLine($"Validation of {test.json} failed under schema {test.schema}, but calling the ToString method of lint {ii} in its returned List<JsonLint> raised exception {ex_ToString}");
+                            }
                         }
                     }
-                    // vp should be null if and only if test.should_validate is true
-                    if (test.should_validate && (vp != null))
+                    // vp should be null if and only if test.shouldValidate is true
+                    if (test.shouldValidate && !validates)
                     {
-                        tests_failed++;
-                        Npp.AddLine($"Expected {test.json} validation under {test.schema} to return null, but instead gave ValidationProblem\n{vp}");
+                        testsFailed++;
+                        Npp.AddLine($"Expected {test.json} validation under {test.schema} to return null, but instead gave validation problem(s)\r\n{JsonSchemaValidator.LintsAsJArrayString(lints)}");
                     }
-                    else if (!test.should_validate && (vp == null))
+                    else if (!test.shouldValidate && validates)
                     {
-                        tests_failed++;
-                        Npp.AddLine($"Expected {test.json} validation under schema {test.schema} to return {test.should_validate}, but instead gave no validation problem.");
+                        testsFailed++;
+                        Npp.AddLine($"Expected {test.json} validation under schema {test.schema} to return {test.shouldValidate}, but instead gave no validation problem(s).");
                     }
                 }
                 catch (Exception e)
                 {
-                    tests_failed++;
-                    Npp.AddLine($"Expected {test.json} validation under schema {test.schema} to return {test.should_validate}, but it raised exception {e}");
+                    testsFailed++;
+                    Npp.AddLine($"Expected {test.json} validation under schema {test.schema} to return {test.shouldValidate}, but it raised exception {e}");
                 }
             }
-            Npp.AddLine($"Failed {tests_failed} tests.");
-            Npp.AddLine($"Passed {ii - tests_failed} tests.");
+            Npp.AddLine($"Failed {testsFailed} tests.");
+            Npp.AddLine($"Passed {ii - testsFailed} tests.");
+            return testsFailed > 0;
         }
     }
 }

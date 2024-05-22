@@ -54,17 +54,21 @@ We can open up the JSON tree viewer in the main menu by navigating Plugins -> Js
 
 ![JSON tree view immediately after creation](/docs/tree%20first%20view.PNG)
 
-You can click on the nodes in that tree to see the children. When you select a node, the caret will snap to the line of the node you've selected.
+You can click on the nodes in that tree to see the children. When you select a node, the caret will snap to the line of the node you've selected. *New in [version 5](/CHANGELOG.md#500---2023-05-26): snaps to position instead.*
 
 __NOTES__
-1. If you submit a RemesPath query that is anything other than the default `@`, the JSON tree may no longer send the caret to the correct line.
-2. If you [edit your JSON](/docs/RemesPath.md#editing-with-assignment-expressions) with RemesPath queries and then undo your change with `Ctrl+Z` or similar, that will not undo the changes to the JSON. To re-sync the JSON with the document, you will have to close and then re-open the tree view.
+1. __*JsonTools only works with UTF-8 encoded JSON.*__
+2. If you submit a RemesPath query that is anything other than the default `@`, the JSON tree may no longer send the caret to the correct position.
+3. If you [edit your JSON](/docs/RemesPath.md#editing-with-assignment-expressions) with RemesPath queries *and then undo your change with `Ctrl+Z` or similar, the undo action will not undo the changes to the JSON*. To re-sync the JSON with the document, you will have to close and then re-open the tree view.
     - As of version 3.5.0, you can use the `Refresh` button to refresh the tree with the most recently parsed JSON, rather than closing and re-opening the tree.
-3. Keyboard shortcuts (*added in v3.5.0*):
+4. Keyboard shortcuts (*added in v3.5.0*):
     - `Ctrl+Enter` in the query box submits the query.
     - `Enter` while the tree is selected toggles the selected node between expanded/collapsed.
     - Up and down arrow keys can also navigate the tree.
+    - `Ctrl+Up` while in the tree selects the parent of the currently selected node. *Added in [v6.0](/CHANGELOG.md#600---2023-12-13).*
+    - `Ctrl+Down` while in the tree selects the last direct child of the currently selected node. *Added in [v6.0](/CHANGELOG.md#600---2023-12-13).*
     - `Escape` takes focus from the tree view back to the editor.
+5. Beginning in [v4.4.0](/CHANGELOG.md#440---2022-11-23), you can have multiple tree views open.
 
 If a node has a `+` or `-` sign next to it, you can click on that button to expand the children of the node, as shown here.
 
@@ -79,6 +83,141 @@ You'll notice that icons appear next to the nodes in the tree. They are as follo
 * <span style="color:red">-3.5</span>: __float__ (represented by 64-bit floating point number)
 * abc: __string__
 * <span style="color:grey">grey</span> square: __null__
+
+## Parser settings ##
+
+Starting in [v5.0.0](/CHANGELOG.md#500---2023-05-26), the JSON parser can always parse any document with any allowed syntax errors, such as singleuqoted keys, comments, missing commas, and so forth.
+
+Error reporting can be customized with the `logger_level` setting, which has 5 levels, each a superset of the previous:
+1. __STRICT__: Parse only JSON that complies with the original JSON spec.
+2. __OK__: Anything allowed with `STRICT`, plus unescaped control characters (e.g., `\t`, `\f`) in strings.
+3. __NAN_INF__: Everything at the `OK` level, plus the `NaN`, `Infinity`, and `-Infinity` literals.
+4. __JSONC__: Everything in the `NAN_INF` level is allowed, as well as JavaScript `//` and `/*...*/` comments.
+5. __JSON5__: Everything in the `JSONC` level is allowed, as well as the following:
+    * singlequoted strings
+    * commas after the last element of an array or object
+    * unquoted object keys
+    * see https://json5.org/ for more.
+* There are two other states that *cannot be chosen* for `logger_level`, because they *always* lead to errors being logged.
+5. __BAD__: Everything on the `JSON5` level is allowed, as well as the following:
+    * Python-style '#' comments
+    * Python constants `None`, *`nan`, and `inf` (starting in [5.4.0](/CHANGELOG.md#540---2023-07-04))*.
+    * missing commas between array members
+    * missing ']' or '}' at the ends of arrays and objects (supported for a long time, but *JsonTools got much better at this beginning in [v6.0](/CHANGELOG.md#600---2023-12-13), allowing proper handling of e.g. `[{"a": 1, "b": "a", {"a": 2, "b": "b"}]`*)
+    * a bunch of other common syntax errors
+6. __FATAL__: These errors always cause *immediate failure* of parsing. Examples include:
+    * unquoted string literals other than `true`, `false`, `null`, `NaN`, `Infinity`, `None`, `True`, `False`, `nan`, `inf` and `undefined`.
+    * Something other than a JavaScript comment after `/`
+
+When you parse a document that contains syntax errors, you may be asked if you want to see the syntax errors caught by the linter. Starting in [v5.1.0](/CHANGELOG.md#510---2023-06-02), this prompt can be suppressed with the `offer_to_show_lint` setting.
+
+![Linter prompt after parsing error-ridden JSON document](/docs/prompt%20to%20view%20lint.PNG)
+
+In [v5.3.0](/CHANGELOG.md#530---2023-06-10), a form was added to display errors. Prior to that, errors were shown as text in a new buffer.
+
+Beginning in [v7.1](/CHANGELOG.md#710---2024-02-28), if there is a fatal error such that JsonTools cannot parse a document, the caret is moved to the location of the fatal error.
+
+### Document type box *(added in v6.0)* ###
+
+*Beginning in version [v6.0](/CHANGELOG.md#600---2023-12-13),* the tree view has a document type box just above the tree itself.
+
+This box has four options (auto):
+* `JSON mode`: parse document (or each selection) as JSON
+* `JSONL mode`: parse document (or each selection) as [JSON lines](#json-lines-documents)
+* `INI mode`: parse document (or each selection) as an [INI file](#parsing-ini-files)
+* `REGEX mode`: the document (or each selection) is converted to a JSON string containing its text, which can then be [searched and edited with regex and RemesPath](#regex-search-form).
+
+Observe the three images below to see how the selected box causes the same document to be interpreted in three different ways (`INI mode` not shown, because that's not a valid INI file).
+
+![Document type box - JSON mode example](/docs/document%20type%20box%20example%20-%20JSON%20mode.PNG)
+
+![Document type box - JSON Lines mode example](/docs/document%20type%20box%20example%20-%20JSONL%20mode.PNG)
+
+![Document type box - REGEX mode example](/docs/document%20type%20box%20example%20-%20REGEX%20mode.PNG)
+
+### Working with selections ###
+
+[Starting in version v5.5](/CHANGELOG.md#550---2023-08-13), you can work with one or more selections rather than treating the entire file as JSON.
+
+Let's see how this works with an example log file.
+```
+Error 1:    [1,2,3]
+Warning 2:  {"a":3}
+Info 3:     [[6,{"b":false}],-7]
+```
+We can make a rectangular selection:
+
+![Make rectangular selection of JSON parts of log file lines](/docs/multi%20selections%20logfile%20make%20rectangular%20selection.PNG)
+
+Now we can pretty-print the JSON in these selections. This has no effect on the document outside the selections.
+
+![Pretty-print multiple JSON selections](/docs/multi%20selections%20pretty%20print.PNG)
+
+__Note that your JSON selections (or lack thereof) are only remembered until you do one of the following:__
+* overwrite or delete all the text in the file
+* perform a JsonTools action while you have any multi-character selection other than the remembered selections.
+    - *NOTE: starting in [v5.7](/CHANGELOG.md#570---2023-09-08), only multi-character selections that begin with a parse-able JSON document will cause the previous selections/lack thereof to be forgotten.*
+    - For example, if you had the text `foo` selected, any version since 5.7 would ignore that selection because it does not begin with a valid JSON document.
+    - However, the selection `[ blah` *would override old selections even though it's not valid JSON* because the JSON parser will parse it as an unterminated empty array.
+* For JsonTools *earlier than [v7.1](/CHANGELOG.md#710---2024-02-28)*:
+    - doing a Notepad++ undo/redo action (Ctrl+Z or Ctrl+Y with default keybindings)
+    - performing any edit to the document when the number of remembered selections is greater than `max_tracked_json_selections`
+* For JsonTools *[v7.1](/CHANGELOG.md#710---2024-02-28) or later*, undoing or redoing a plugin action will still cause remembered selections to be forgotten.
+
+You can move the cursor around, insert and delete characters, and the plugin will move or change the JSON selections accordingly.
+
+For a demo, let's try inserting some more text. We can open the treeview afterwards to see that our changes have been incorporated.
+
+![JSON selections automatically adjust to inserted and deleted text](/docs/multi%20selections%20insert%20delete%20text.PNG)
+
+Also observe the way the treeview is structured. When a document has one or more selections, the JSON is internally represented as a map from `selectionStart,selectionEnd` strings to the JSON in each of those selections.
+
+We can perform RemesPath queries on the selections. __RemesPath queries (including find/replace form operations) are performed on each selection separately.__ This means that unfortunately you cannot write a RemesPath query that only operates on *some* of the selections.
+
+![RemesPath query on file with selections](/docs/multi%20selections%20Remespath%20query.PNG)
+
+Beginning in [v7.0](/CHANGELOG.md#700---2024-02-09), [automatic linting after editing](#automatically-check-for-errors-after-editing) is disabled while in selection-based mode, to avoid unexpectedly changing the user's selections when the document is automatically parsed.
+
+### Selecting all valid JSON ###
+
+Sometimes it's nearly impossible to select every JSON element in the file. Fortunately, [v5.5 introduced](/CHANGELOG.md#550---2023-08-13) a new method for parsing every valid JSON in the file, `Select every valid JSON` (Alt-P-J-I using accelerator keys).
+
+__This method only parses valid JSON according the [`NAN_INF` logger_level](#parser-settings).__ That means no newlines in strings, non singlequoted strings, no comments, etc.
+
+![Select all valid json](/docs/select%20all%20valid%20json.PNG)
+
+As the above example shows, this method *can* handle unmatched quotes/braces, but you shouldn't count on it. If this method is finding less JSON that you expect, unmatched quotes/braces are likely the culprit.
+
+### Error form and status bar ###
+
+If you click "Yes", a docking form will open up at the bottom of the document. Each row in the document will correspond to a different syntax error.
+
+Clicking on or paging to a row in the error form with the arrow keys will move the caret to the location in the document where that error was found.
+
+Hitting `Enter` while in the form refreshes the form with the JSON in the current document. You can also seek the next syntax error with a description that starts with a letter by typing that letter while in the form. For example, typing `P` in the form might select the next `Python-style '#' comments are not part of any well-accepted JSON specification` error.
+
+Beginning in [v6.0](/CHANGELOG.md#600---2023-12-13), you can right-click on this form to gain the option of exporting all errors to JSON or refreshing the form.
+
+In addition to this form, the document type status bar section will show how many errors were logged.
+
+![Error form and description in status bar](/docs/error%20form%20and%20status%20bar%20section.PNG)
+
+For performance reasons, the error form will never have more than 5000 rows. These rows will be roughly evenly spaced throughout the document.
+
+__For pre-[v6.1](/CHANGELOG.md#610---2023-12-28) JsonTools, *do not click `Yes`* on the dialog that warns of slow reload.__ If you click `Yes`, you can expect to wait an *extremely long time.*
+
+Beginning in [v7.0](/CHANGELOG.md#700---2024-02-09), the error form also reports JSON schema validation errors. They are indicated by `SCHEMA` in the `Severity` column as shown below. In addition, if a file was previously validated, hitting `Enter` to refresh the error form re-validates the file using whatever schema was most recently used for that file.
+
+![Error form reporting schema validation errors](/docs/error%20form%20with%20SCHEMA%20errors.PNG)
+
+<details><summary>Pre-v5.3.0 error reporting</summary>
+
+If you click "Yes", a new file will open in a separate tab containing details on all the syntax errors that were caught. Starting in [v5.1.0](/CHANGELOG.md#510---2023-06-02), errors can also be shown for the current document with a new plugin menu option.
+
+![Linter syntax error report](/docs/linter%20syntax%20error%20report.PNG)
+</details>
+
+<details><summary>pre-version 5.0.0 system for configuring JSON parser</summary>
 
 ## Parser settings ##
 
@@ -99,15 +238,33 @@ As you can see, you can also make the parser settings *stricter* than the defaul
 ## Viewing syntax errors in JSON ##
 
 The `linting` attribute in Settings enables the built-in linter for the JSON parser, which catches various syntax errors in JSON and logs them.
-When you parse a document that contains syntax errors like the one we saw above, you'll be asked if you want to see the syntax errors caught by the linter.
-
-![Linter prompt after parsing error-ridden JSON document](/docs/prompt%20to%20view%20lint.PNG)
-
-If you click "Yes", a new file will open in a separate tab containing details on all the syntax errors that were caught.
-
-![Linter syntax error report](/docs/linter%20syntax%20error%20report.PNG)
 
 **NOTE:** The JSON linter allows the parser to continue parsing even when it encounters syntax errors. That means that the parser will parse some documents that are not valid JSON until the syntax errors are corrected.
+</details>
+
+## Automatically check for errors after editing ##
+
+*Added in [version 4.13.0](/CHANGELOG.md#4130---2023-04-11)*
+
+About 2 seconds after a not-very-large file (default less than 4 megabytes, configurable in settings) is opened, and after 2 seconds of inactivity following any modification of the file or styling, the plugin can parse the document and performs [JSON Schema validation](#validating-json-against-json-schema) on the document. The user is notified of any errors when this happens, and no further notifications are sent until the user next modifies or re-styles the document.
+
+This is off by default. If desired, this feature can be turned on in the settings (`auto_validate` setting). When turned on, it only applies to files with `json`, `jsonc`, `jsonl`, and `json5` extensions, or files configured for [automatic JSON schema validation](#automatic-validation-of-json-against-json-schema).
+
+Prior to [v6.1](/CHANGELOG.md#610---2023-12-28), this automatic validation forced the file to be parsed as JSON. As of v6.1, the document will be parsed as [JSON Lines](#json-lines-documents) if the file extension is `jsonl` and as JSON otherwise. In addition, if the document is already in [regex mode](#regex-search-form) or [ini file mode](#parsing-ini-files), automatic validation is suspended.
+
+Beginning in [v7.0](/CHANGELOG.md#700---2024-02-09), this automatic validation will only ever attempt to parse the entire document, not [a selection](#working-with-selections), and automatic validation is always disabled in selection-based mode. Prior to v7.0, automatic validation could change the user's selections unexpectedly.
+
+## Path to current position ##
+
+*Added in version v5.0.0*
+
+The `Path to current position` menu option lets you fill the clipboard with the path to the current position in the document.
+
+This replaced the old `Path to current line` menu option.
+
+![Path to current position example](/docs/path%20to%20current%20position.PNG)
+
+<details><summary>Path to current line, Removed in v5.0.0</summary>
 
 ## Path to current line ##
 
@@ -116,6 +273,7 @@ If you click "Yes", a new file will open in a separate tab containing details on
 The `Path to current line` menu option lets you fill the clipboard with the path to the first node on the current line. This is most helpful when your JSON is already [pretty-printed](/docs/README.md#pretty_print_style) so no two nodes share a line.
 
 ![Getting the path to current line](/docs/path%20to%20current%20line.PNG)
+</details>
 
 ### Key style ###
 
@@ -137,6 +295,8 @@ You can submit RemesPath queries in textbox above the tree, which by default has
 
 Once you've submitted a query, you can use several other features of the JSON viewer.
 First, you can open a new buffer containing the query result.
+
+Prior to [v6.0](/CHANGELOG.md#600---2023-12-13), submitting a query automatically attempted to parse whatever document was currently open, thus potentially rebinding the tree to a different document. Starting in [v6.0](/CHANGELOG.md#600---2023-12-13), submitting a query only triggers parsing of whatever document the treeview is currently associated with.
 
 ![JSON viewer open query result in new buffer](/docs/json%20viewer%20query%20save.PNG)
 
@@ -166,6 +326,8 @@ Starting in version [4.11.0](/CHANGELOG.md#4110---2023-03-15), non-regular-expre
 
 The form has limited functionality. For example, you can't perform a search on keys and a replacement on values. However, the form generates RemesPath queries in the RemesPath query box in the tree viewer, so you can use those queries as a starting point.
 
+Beginning in [v6.0](/CHANGELOG.md#600---2023-12-13), when a `Replace all` query is run, only the values that were replaced are displayed in the tree. Prior to that, the tree would show the entire JSON after a successful `Replace all` query.
+
 ## JSON to CSV ##
 
 *Added in version 1.2.0*
@@ -178,13 +340,18 @@ This app has a [form](/docs/json-to-csv.md) that allows conversion of such JSON 
 
 At present the __Strategy__ option for the CSV Generation form has four options. You can read more about these strategies in the [docs](/docs/json-to-csv.md).
 
+In [v5.8](/CHANGELOG.md#580---2023-10-09), the line terminator for generated CSV files became customizable (default Unix `LF`, can choose from `CRLF`, `CR`, and `LF`). 
+
 ## Changing how much JSON tree is displayed ##
 
-*Added in version 3.1.0*
+Beginning in version [4.13.1](/CHANGELOG.md#4140---2023-04-12), the tree view is loaded on-demand, whenever the user expands a tree node. The tree is thus very responsive and quick to load.
 
-Loading the full tree for very large, complex JSON can cause tremendous memory consumption and make Notepad++ unresponsive for a long time. Because of this, only the __direct children of the root__ are displayed by default for JSON files larger than 4 megabytes. This is reflected in the `View all subtrees` checkbox. You can change this in the settings.
+Beginning in version *4.10.0*, if a JSON array or object has more than `10 thousand` direct children (congigurable in `Settings->max_json_length_full_tree`), this setting will automatically be activated, and `10 thousand` evenly spaced children will be displayed. For example, this would mean that an array with 200 thousand children would result in a tree view with pointers to the first element, the 20th element, the 40th element, and so on.
 
-Beginning in version *4.10.0*, if a JSON array or object has more than `10,000` direct children (congigurable in `Settings->max_json_length_full_tree`), this setting will automatically be activated, and `10,000` evenly spaced top-level children will be displayed. For example, this would mean that an array with 200,000 children would result in a tree view with pointers to the first element, the 20th element, the 40th element, and so on.
+<details>
+<summary>How the tree view worked before <a href="/CHANGELOG.md#4131---2023-04-12">4.13.1</a></summary>
+
+Loading the full tree for very large, complex JSON can cause tremendous memory consumption and make Notepad++ unresponsive for a long time. Because of this, only the __direct children of the root__ are displayed by default for JSON files larger than 4 megabytes. This is reflected in the `View all subtrees` checkbox. You can change this in the settings. This was added in *version 3.1.0*.
 
 Populating the tree is *much* more expensive than parsing JSON or executing RemesPath queries, which means that rather small JSON files with a very large number of nodes (e.g., an array containing 1e5 instances of the number `1`) may take *much* longer to load than larger files with a smaller number of nodes.
 
@@ -195,10 +362,13 @@ For best performance, you can disable the tree view completely. If the JSON is a
 The `View all subtrees` checkbox on the JSON viewer form allows you to quickly toggle between viewing the full tree and only the direct children. Some notes on the checkbox:
 - If the full tree will not be shown when the tree is loaded, this box is unchecked; otherwise it is checked.
 - Checking the box when previously unchecked will load the full tree, but the user must click OK at a message box if the document is 2.5 MB or larger or else the box will remain unchecked. This box warns that loading the full tree for a big document could make Notepad++ responsive for a long time.
+
 ![Message box warning of unresponsiveness when loading a big document](/docs/full%20tree%20load%20warning%20msg.PNG)
 - This message box for canceling loading of the full tree will now also show up when you try to open the full tree for a document 2.5 MB or larger.
 - Unchecking the box when the full tree is loaded will cause only the direct children of root to display.
 - This box does not change the global settings. It only changes the settings for that tree view.
+</details>
+
 
 ## Get info about tree nodes ##
 
@@ -212,6 +382,22 @@ You can right click on a tree node to copy any of the following to the clipboard
 In versions 3.4.0 through 3.6.1.1, you can also click on the `Current path` button beneath the tree to copy the path of the currently selected tree node to the clipboard. The path will have the style of whatever default style you chose in the settings (shown in the adjacent text box). In versions 3.7.0 and above, this button does not exist, so just select and copy the text in the box.
 
 ![Current path button for path to current tree node](/docs/path%20to%20current%20tree%20node%20button.PNG)
+
+### Select tree node's JSON (or its children) *(added in v5.7)* ###
+
+Starting in [v5.7](/CHANGELOG.md#570---2023-09-08), __you can use the tree view to select any JSON element, or select all children of that element.__
+
+![Treeview select all children - JSON document](/docs/treeview%20select%20associated%20json%20children.PNG)
+
+In some cases this feature will fail to select JSON after entering a RemesPath query. This is (usually) expected behavior and not a bug, because:
+* Some queries remember position because they select nodes from the document (e.g., indexers like `@[:].b[@ < 3]`)
+* Other indexers create new nodes with position 0 that are a function of nodes in the document (e.g., `@ * 3`).
+
+This functionality can also be used to select regex search results or values from a CSV file. For example, the simple query below, followed by `Select all children` on the root, selects all elements in column 3 (index 2 b/c JSON tools uses 0-based indexing) that begin with uppercase `F` or `B` (disregarding enclosing quotes)
+
+![Treeview select all children - CSV document](/docs/tree%20select%20all%20children%20csv.PNG)
+
+Beginning in [v6.1](/CHANGELOG.md#610---2023-12-28), using this option from the root treenode selects all remembered selections when in [multi-selection mode](#working-with-selections), and selects every JSON line in [JSON lines](#json-lines-documents) mode.
 
 ## JSON formatting ##
 
@@ -237,6 +423,9 @@ With indentation __2__, you get this instead:
   ]
 }
 ```
+### tab_indent_pretty_print ###
+Use tabs instead of spaces for indentation. When this setting is `true`, the `indent_pretty_print` setting is ignored and one tab is always used per level of depth. __Introduced in [v5.4.0](/CHANGELOG.md#540---2023-07-04).__
+
 ### minimal_whitespace_compression ###
 The Python convention for formatting JSON results in compressed JSON with a little bit of whitespace, like so:
 ```json
@@ -251,9 +440,9 @@ With minimal_whitespace_compression, __all__ unnecessary whitespace is removed:
 ### pretty_print_style ###
 There are many different [styles](http://astyle.sourceforge.net/astyle.html#_style) for pretty-printing JSON that vary in how they indent and where they put braces.
 
-At present, two different styles are supported:
+At present, three different styles are supported:
 
-[Google style](http://astyle.sourceforge.net/astyle.html#_style=google)
+[`Google` style](http://astyle.sourceforge.net/astyle.html#_style=google)
 ```json
 {
     "a": [
@@ -264,7 +453,7 @@ At present, two different styles are supported:
     ]
 }
 ```
-[Whitesmith style](http://astyle.sourceforge.net/astyle.html#_style=whitesmith)
+[`Whitesmith` style](http://astyle.sourceforge.net/astyle.html#_style=whitesmith)
 ```json
 {
 "a":
@@ -274,6 +463,24 @@ At present, two different styles are supported:
         2
         ]
     ]
+}
+```
+`PPrint` style (introduced in version [5.0.0](/CHANGELOG.md#500---2023-05-26)): inspired by [Python's pprint module](https://docs.python.org/3/library/pprint.html)
+```json
+{
+    "algorithm": [
+        ["start", "each", "child", "on", "a", "new", "line"],
+        ["if", "the", "line", "would", "have", "length", "at", "least", 80],
+        [
+            "follow",
+            "this",
+            "algorithm",
+            ["starting", "from", "the", "beginning"]
+        ],
+        ["else", "print", "it", "out", "on", 1, "line"]
+    ],
+    "style": "PPrint",
+    "useful": true
 }
 ```
 ### sort_keys ###
@@ -289,11 +496,158 @@ If this is true, keys are sorted alphabetically like so:
 ```json
 {"A": 2, "a": 1, "ba": 4, "BA": 2, "c": 4, "C": 3}
 ```
-As you can see, the sort is unstable when comparing two keys that differ only in case. You can't rely on the lower-case key being before the upper-case key or vice versa.
+As you can see, the sort is *unstable* when comparing two keys that differ only in case. You can't rely on the lower-case key being before the upper-case key or vice versa.
+
+See the [general notes on string sorting](/README.md#note-on-how-jsontools-sorts-strings) for more notes on how strings are sorted.
+
+### remember_comments ###
+*Added in version [5.6.0](/CHANGELOG.md#560---2023-08-18).*
+
+If this is true, the JSON parser remembers the location and type of any comments it finds while parsing. If any comments are found while parsing, the next time the JSON is pretty-printed or compressed, the comments will be included.
+
+Pretty-printing with comments attempts to keep all comments in approximately the same position relative to other comments and JSON elements as they were in the original document. The only supported algorithm for pretty-printing with comments is Google style, shown above.
+
+Compressing with comments puts all comments at the beginning of the document, followed by the compressed JSON (with non-minimal whitespace).
+
+__EXAMPLE:__
+
+Suppose you start with this document:
+```json
+# python comments become JavaScript single-line
+[1, 2,/* foo */ 3,
+ {"a": [ // bar
+   1,
+   [1.5]
+   ] // any comment that begins after the last JSON element
+ } // gets moved to the very end of the doc when pretty-printing
+]
+```
+__Pretty-printing while remembering comments produces this__ (although note that beginning in [v7.0](/CHANGELOG.md#700---2024-02-09), this is only true if your [pretty_print_style](#pretty_print_style) is `Whitesmith` or `Google`):
+```json
+// python comments become JavaScript single-line
+[
+    1,
+    2,
+    /* foo */
+    3,
+    {
+        "a": [
+            // bar
+            1,
+            [
+                1.5
+            ]
+        ]
+    }
+]
+// any comment that begins after the last JSON element
+// gets moved to the very end of the doc when pretty-printing
+```
+__Compressing while remembering comments produces this:__
+```json
+// python comments become JavaScript single-line
+/* foo */
+// bar
+// any comment that begins after the last JSON element
+// gets moved to the very end of the doc when pretty-printing
+[1, 2, 3, {"a": [1, [1.5]]}]
+```
+
+Beginning in [v7.0](/CHANGELOG.md#700---2024-02-09), choosing the `PPrint` setting for [pretty_print_style](#pretty_print_style) causes comments to be remembered as follows:
+```json
+[
+    ["short", {"iterables": "get", "printed": "on", "one": "line"}],
+    {
+        "but": [
+            "this",
+            /* has a comment in it */
+            "and gets more lines"
+        ]
+    },
+    [
+        "array",
+        "would be short enough",
+        /* but has */
+        1,
+        "comment",
+        true
+    ],
+    [
+        "and this array is too long",
+        "so it goes Google-style",
+        "even though it has",
+        [0.0, "comments"]
+    ]
+]
+
+```
+
+## Sort form ##
+
+*Added in [v5.2](/CHANGELOG.md#520---2023-06-04)*
+
+This form provides a convenient way to sort or shuffle arrays in-place. You can sort a single array or use RemesPath to identify multiple arrays that will all be sorted.
+
+Consider this JSON document:
+```json
+[
+    ["this", -1, 4.5],
+    ["is", 1, 3.5],
+    ["sort", 3, 2.5],
+    ["form", 5, 1.5],
+    ["example", 7, 0.5]
+]
+```
+
+We will start by shuffling it.
+
+![Sort form; doc after shuffling](/docs/sort%20form%20shuffle.PNG)
+
+Next, let's sort by the first entry in each subarray.
+
+![Sort form; sort by index in elements](/docs/sort%20form%20sort%20by%20index%20in%20elements.PNG)
+
+Let's do something a little more interesting: *we can sort multiple arrays if a query produces an array or object where all the values are arrays.*
+
+We will use the query `[:3]` to sort the first three subarrays in this document, and leave the last two unchanged. *Note that we need to sort as strings since the values are a mix of numbers and strings.*
+
+![Sort form; sort first three subarrays as strings](/docs/sort%20form%20sort%20subarrays%20as%20strings.PNG)
+
+Finally, let's sort the whole document from largest to smallest by a query on each subarray, `@[2] * s_len(@[0])`, which will sort them by the third element multiplied by the string length of the first element.
+
+![Sort form; sort by query on each element](/docs/sort%20form%20sort%20by%20query%20on%20each%20element.PNG)
+
+Of course, there's also the default sort, which can only compare numbers to numbers and strings to strings. Any mixing of types with the default sort results in failure.
+
+See the [general notes on string sorting](/README.md#note-on-how-jsontools-sorts-strings) for more notes on how strings are sorted.
+
+## Regex search form ##
+
+*Added in [v6.0](/CHANGELOG.md#600---2023-12-13)*
+
+The regex search form (`Alt-P-J-X` using accelerator keys) makes the treeview usable for any document!
+
+Opening up a document in regex mode allows __querying and mutating the raw text of a document with [RemesPath](/docs/RemesPath.md).__ Clicking the `Search` button on the regex search form creates a RemesPath query in the treeview for the current document using the [`s_csv` or `s_fa` functions](/docs/RemesPath.md#vectorized-functions). See the documentation for those functions for more information on the allowed regular expression syntax, but *remember that the regular expression syntax used here is not the same as Notepad++'s find-replace form.*
+
+![](/docs/regex%20search%20form%20regex%20example.PNG)
+
+You can view CSV files (any delimiter, quote character, and newline are allowed) with the treeview, providing that they comply with [RFC 4180](https://www.ietf.org/rfc/rfc4180.txt).
+
+Beginning in [v7.0](/CHANGELOG.md#700---2024-02-09), if the new `auto_try_guess_csv_delim_newline` global setting is set to `true`, whenever the regex search form is opened, or the `Parse as CSV?` button is toggled on, the regex search form will check the first 1600 characters of the current document to detect if it is a CSV or TSV file. This makes the regex search form load more slowly, but it makes it easier to parse CSV files.
+
+![Regex search form viewing a CSV file](/docs/regex%20search%20form%20csv%20example.PNG)
+
+If you want to edit your document using RemesPath, the [`s_sub` function](/docs/RemesPath.md#vectorized-functions) may prove useful for regex-replacement, and the [`to_csv` function](/docs/RemesPath.md#non-vectorized-functions) may be useful for CSV editing.
+
+In the below example, we parse the above document as a CSV file, edit it by changing the second column (named `names`) to `CITY NAME HAS U` wherever the third column (named `cities`) contains the uppercase letter `U`, and then replace the text of the document with the edited file formatted as tab-separated variables.
+
+![Regex search form EDITING a CSV file](/docs/regex%20search%20form%20csv%20REPLACE%20example.PNG)
+
+__Remember: the Notepad++ document is not affected unless you assign something to its value__, even if the values shown in the tree are affected. For example, __`@ = s_sub(@, foo, bar)` *would edit* the Notepad++ document__ by replacing every instance of `foo` with `bar`, but __`var x = s_fa(@, foo); x = bar` *would not edit* the document__ because the search results are a separate entity from the document.
 
 ## JSON Lines documents ##
 
-*Added in version v3.2.0*
+*Added in version [v3.2.0](/CHANGELOG.md#320---2022-09-19)*
 
 [JSON Lines](https://jsonlines.org/) documents can contain multiple valid JSON documents, provided that each is on its own line and there is exactly one line per document (with an optional empty line after the last).
 
@@ -328,6 +682,8 @@ __NOTES:__
 - The `Array to JSON Lines` command (*added in v3.3.0*) on the plugin menu allows you to convert a normal JSON array into a JSON Lines document. 
 - If you query a JSON Lines doc with RemesPath, the query result will be formatted as normal JSON.
 - If you have a JSON Lines document that doesn't have the `.jsonl` extension, you can use the `Plugins->JsonTools->Parse JSON Lines document` command in the main menu.
+- Beginning in [v5.8](/CHANGELOG.md#580---2023-10-09), the plugin will by default prompt to confirm if you try to pretty-print a document with the `.jsonl` extension, because *pretty-printing a JSON Lines document will probably make it invalid.* This prompt can be disabled in the settings.
+- Also beginning in [v5.8](/CHANGELOG.md#580---2023-10-09), [editing a JSON Lines document with RemesPath](/docs/RemesPath.md#editing-with-assignment-expressions) will keep the document in JSON Lines format.
 
 ## Running tests ##
 
@@ -336,6 +692,52 @@ The plugin contains a variety of built-in unit tests and performance benchmarks 
 This repository also contains ["most recent errors.txt"](/most%20recent%20errors.txt), which shows the expected output (modulo some variation in the benchmarking times) of these tests. By comparing the output of running the tests on your computer to the expected output, you can determine whether the plugin's code is working as expected.
 
 Prior to version [4.2.0](/CHANGELOG.md#420---2022-10-29), running these tests should cause the plugin to crash after printing the line `Testing JSON grepper's file reading ability` because some tests referenced an absolute file path.
+
+An easy way to figure out which tests are failing is to use Notepad++'s find/replace form to search for __`Failed\s+[^0]`__ (*with regular expressions on*).
+
+## Parsing INI files ##
+
+*Added in version [v5.8](/CHANGELOG.md#580---2023-10-09)*
+
+INI files (which typically have the `ini` file extension) are often used as config files.
+
+JsonTools can parse INI files with a format like the following example:
+```
+; comments can begin with ';'
+# comments can also begin with '#'
+[header]
+equals can separate keys and values = yes
+  ; any indentation of keys within a section is fine
+  colon can also separate keys and values : true
+
+[another header]
+another key=foo
+  ; comment to indicate that the header on the next line isn't part of a multiline value
+  [indented section]
+  multiline value = first line
+    subsequent lines of multiline value
+    need to be more indented than the first
+    ; comments end the multiline value
+
+[final section]
+more about comments: this ';' does not start a comment
+  because the ';' is not the first non-whitespace of the line
+
+even more about comments=this is true for '#' as well
+```
+
+INI files will always be parsed as objects, with section headers mapped to objects representing sections. __All the values in a section object will be strings.__
+
+Here's the tree view created for the example above:
+
+![ini file tree view](/docs/ini%20file%20tree%20view.PNG)
+
+INI files can be pretty-printed (as reformatted INI files) and edited with RemesPath.
+
+### Notes
+1. It is a __fatal error__ for a document has duplicate section names, or two of the same key within a section.
+2. Currently the only file extension that will automatically be parsed as an INI file is `.ini`. If you wish to parse a document with another extension as INI, you need to use the `Open tree for INI file` (Alt-P-J-I-I-Enter using accelerator keys) to parse the document as an INI file.
+3. After a RemesPath query converting values to non-strings, they're converted back to strings.
 
 # Get JSON from files and APIs #
 
@@ -361,7 +763,7 @@ Here's an example of what you get with successful request(s):
 
 The URLs of successful requests show up in the box on the right. I used the `View results in buffer` button at the bottom of the form to open the buffer and tree view shown here.
 
-Of course, sometimes an API request will fail. You can click the [View errors button](#viewing-errors) to see any errors that happened.
+Of course, sometimes an API request will fail. You can click the [View errors button](#error-form-and-status-bar) to see any errors that happened.
 
 ## Getting JSON from local directories ##
 
@@ -375,7 +777,7 @@ For every file that the JSON tries and fails to parse, the exception will be cau
 
 If you want to see the JSON found by this tool, just click the `View results in buffer` button. This will open a new buffer in Notepad++ with an object mapping filenames and URLs to the JSON associated with them.
 
-This form has its own tree viewer associated with this buffer. You can use this plugin's normal tree viewer for other buffers. If you close the buffer, the tree viewer is destroyed.
+This form has its own tree viewer associated with this buffer. You can use this plugin's normal tree viewers for other buffers. If you close the buffer, the tree viewer is destroyed.
 
 ## Clearing selected files ##
 
@@ -397,6 +799,8 @@ Click the `View errors` button to see if any errors happened. If any did, a new 
 
 As of version *4.6.0*, the plugin can validate JSON against a [JSON schema](https://json-schema.org/). If the schema is valid, a message box will tell you if your JSON validates. If it doesn't validate, the plugin will tell you the first location where validation failed.
 
+Beginning in [v7.0](/CHANGELOG.md#700---2024-02-09), validators can catch multiple JSON schema validation problems, not just one. You can use the [error form](#error-form-and-status-bar) to see where all of the schema validation problems are. To avoid very slow performance on files that do not match the schema, the validator will exit after it encounters 64 problems (configurable by the `max_schema_validation_problem` setting). Note that changes to the `max_schema_validation_problem` setting only take effect the next time you start Notepad++.
+
 As of version [4.11.2](/CHANGELOG.md#4112---2023-03-21), the recursion limit for validation is currently 64. Deeper JSON than that can't be validated, period. Very deep or recursive schemas will still compile.
 
 This tool can only validate the following keywords:
@@ -405,6 +809,7 @@ This tool can only validate the following keywords:
 * type
 * [anyOf](https://json-schema.org/draft/2020-12/json-schema-core.html#name-anyof)
 * [enum](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-enum)
+    * beginning in [v6.0](/CHANGELOG.md#600---2023-12-13), the `enum` keyword can be used with mixed-type enums, and can be used without specifying the `type` keyword. 
 * [`definitions`, `$defs`, and `$ref`](https://json-schema.org/draft/2020-12/json-schema-core.html#name-schema-re-use-with-defs)
     * __Notes:__
     * support added in version [4.11.2](/CHANGELOG.md#4112---2023-03-21)
@@ -423,10 +828,12 @@ This tool can only validate the following keywords:
 ### Keywords for strings
 
 * [pattern](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-pattern) (*support added in version [4.11.2](/CHANGELOG.md#4112---2023-03-21)*)
-
+* [minLength](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-minlength) (*added in [5.0.0](/CHANGELOG.md#500---2023-05-26)*)
+* [maxLength](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-maxlength) (*added in [5.0.0](/CHANGELOG.md#500---2023-05-26)*)
 
 ### Keywords for numbers
-* [minimum](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-minimum) and [maximum](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-maximum) (*Both added in version [4.12.0](/CHANGELOG.md#4120---2023-03-28)*)
+* [minimum](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-exclusiveMinimum) and [maximum](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-maximum) (*Both added in version [4.12.0](/CHANGELOG.md#4120---2023-03-28), but both bugged until [5.1.0](/CHANGELOG.md#510---2023-06-02)*)
+* [exclusiveMinimum and exclusiveMaximum](https://json-schema.org/understanding-json-schema/reference/numeric.html#id7) (*Both added in version [5.1.0](/CHANGELOG.md#510---2023-06-02)*)
 
 ![Example of successful JSON schema validation](/docs/json%20schema%20validation%20succeeded.PNG)
 
@@ -465,6 +872,10 @@ The following keywords are supported for random JSON generation:
 
 ### Keywords for numbers
 * [minimum](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-minimum) and [maximum](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-maximum) (*Both added in version [4.12.0](/CHANGELOG.md#4120---2023-03-28)*)
+
+### Keywords for strings ###
+
+* [minLength](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-minlength) and [maxLength](https://json-schema.org/draft/2020-12/json-schema-validation.html#name-maxlength) (*added in [7.1](/CHANGELOG.md#710---2024-02-28)*)
 
 ## Generating JSON schema from JSON ##
 
@@ -507,6 +918,22 @@ Below we can see an example of what happens when a file with a name that matches
 ![schemas to filenames patterns file failed validation](/docs/schemasToFnamePatterns%20example%20schema%20to%20example%20fname%20failure.PNG)
 
 *Note*: the first release where this feature was implemented without causing potential crashes at startup is [4.11.1](/CHANGELOG.md#4111---2023-03-17).
+
+## Toolbar icons ##
+
+Starting in [v5.7](/CHANGELOG.md#570---2023-09-08), JsonTools has toolbar icons for [the tree view](#the-basics), [compressing, pretty-printing](#json-formatting), and [path to current position](#path-to-current-position).
+
+The `toolbar_icons` option in settings lets you customize which toolbar icons show up, and their order, according to the case-insensitive mapping `{'t': 'tree view', 'c': 'compress', 'p': 'pretty-print', 'o': 'path to current position'}`.
+
+Thus, `cot` would give the icon sequence `(compress, path to current position, tree view)`, `P` would give only the pretty-print icon, and `A` would give no icons at all.
+
+## Check JSON syntax now ##
+
+*Added in version [7.2](/CHANGELOG.md#720---2024-04-19).*
+
+This command checks JSON syntax and updates the [error form and status bar](/docs/README.md#error-form-and-status-bar). It *will not* validate using JSON schema. If there are any [remembered selections](#working-with-selections), it will only parse those selections.
+
+This command will *always* attempt to parse the document as JSON, unless the file extension is `.jsonl`, in which case it will attempt to parse the document as [JSON Lines](#json-lines-documents). This will override [regex mode](#regex-search-form) and [INI mode](#parsing-ini-files).
 
 ## DSON ##
 

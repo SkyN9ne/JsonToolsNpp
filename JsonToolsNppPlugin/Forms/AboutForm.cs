@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 using JSON_Tools.JSON_Tools;
 using JSON_Tools.Utils;
@@ -13,7 +15,11 @@ namespace JSON_Tools.Forms
         public AboutForm()
         {
             InitializeComponent();
+            NppFormHelper.RegisterFormIfModeless(this, true);
+            FormStyle.ApplyStyle(this, Main.settings.use_npp_styling);
+            ThanksWowLinkLabel.LinkColor = ThanksWowLinkLabel.ForeColor; // hidden!
             Title.Text = Title.Text.Replace("X.Y.Z.A", Npp.AssemblyVersionString());
+            DebugInfoLabel.Text = DebugInfoLabel.Text.Replace("X.Y.Z", Npp.nppVersionStr);
         }
 
         /// <summary>
@@ -21,10 +27,10 @@ namespace JSON_Tools.Forms
         /// </summary>
         private void GitHubLink_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
         {
-            string help_url = "https://github.com/molsonkiko/JsonToolsNppPlugin";
+            string helpUrl = "https://github.com/molsonkiko/JsonToolsNppPlugin";
             try
             {
-                var ps = new ProcessStartInfo(help_url)
+                var ps = new ProcessStartInfo(helpUrl)
                 {
                     UseShellExecute = true,
                     Verb = "open"
@@ -76,10 +82,9 @@ namespace JSON_Tools.Forms
         /// </summary>
         static void Dogeify()
         {
-            JNode json = Main.TryParseJson();
-            if (json == null) return;
-            int[] majorMinorVersion = Npp.notepad.GetNppVersion();
-            if (majorMinorVersion[0] >= 8)
+            (ParserState parserState, JNode json, _, _) = Main.TryParseJson(preferPreviousDocumentType:true);
+            if (parserState == ParserState.FATAL || json == null) return;
+            if (Npp.nppVersionAtLeast8)
             {
                 // add the UDL file to the userDefinedLangs folder so that it can colorize the new file
                 DirectoryInfo userDefinedLangPath = new DirectoryInfo(Path.Combine(
@@ -88,12 +93,7 @@ namespace JSON_Tools.Forms
                     "userDefineLangs"));
                 if (userDefinedLangPath.Exists)
                 {
-                    FileInfo dsonUDLPath = new FileInfo(Path.Combine(
-                        Npp.notepad.GetNppPath(),
-                        "plugins",
-                        "JsonTools",
-                        "DSON UDL.xml"
-                    ));
+                    FileInfo dsonUDLPath = new FileInfo(Path.Combine(Npp.pluginDllDirectory, "DSON UDL.xml"));
                     string targetPath = Path.Combine(userDefinedLangPath.FullName, "dson.xml");
                     if (dsonUDLPath.Exists && !File.Exists(targetPath))
                     {
@@ -106,13 +106,15 @@ namespace JSON_Tools.Forms
                 string dson = Dson.Dump(json);
                 Npp.notepad.FileNew();
                 Npp.editor.SetText(dson);
+                Npp.RemoveTrailingSOH();
                 Npp.editor.AppendText(2, "\r\n");
+                Npp.RemoveTrailingSOH();
                 string newName = Npp.notepad.GetCurrentFilePath() + ".dson";
                 Npp.notepad.SetCurrentBufferInternalName(newName);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Could not convert JSON to DSON. Got exception:\r\n{ex.ToString()}",
+                MessageBox.Show($"Could not convert JSON to DSON. Got exception:\r\n{RemesParser.PrettifyException(ex)}",
                     "such error very sad",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }

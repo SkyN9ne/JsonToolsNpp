@@ -3,9 +3,11 @@ Breaks a Remespath query into tokens.
 */
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Text;
 using JSON_Tools.Utils;
+using System.Linq;
 
 namespace JSON_Tools.JSON_Tools
 {
@@ -33,45 +35,156 @@ namespace JSON_Tools.JSON_Tools
         {
             /* Looks like this:
 Syntax error at position 3: Number with two decimal points
-3.5.2
-   ^
+3.5>>>HERE>>>.2
              */
-            string caret = new string(' ', lexpos) + '^';
-            return $"Syntax error at position {lexpos}: {msg}{System.Environment.NewLine}{query}{System.Environment.NewLine}{caret}";
+            string firstQueryPart = query.Substring(0, lexpos);
+            string secondQueryPart = query.Substring(lexpos);
+            return $"Syntax error at position {lexpos}: {msg}\r\n{firstQueryPart}>>>HERE>>>{secondQueryPart}";
         }
     }
 
-    //public struct Delimiter
-    //{
-    //    public string value;
+    public struct UnquotedString
+    {
+        public string value;
 
-    //    public Delimiter(string value) { this.value = value; }
+        public UnquotedString(string value)
+        {
+            this.value = value;
+        }
 
-    //    public override string ToString() { return $"Delimiter(\"{value}\")"; }
-    //}
+        public override string ToString()
+        {
+            return JNode.StrToString(value, true);
+        }
+    }
 
     public class RemesPathLexer
     {
         public const int MAX_RECURSION_DEPTH = JsonParser.MAX_RECURSION_DEPTH;
-        /// <summary>
-        /// position in query string
-        /// </summary>
-        public int ii = 0;
 
-        public RemesPathLexer() { }
+        public JsonParser jsonParser;
 
-        // note that '-' sign is not part of this num regex. That's because '-' is its own token and is handled
-        // separately from numbers
-        public static readonly Regex NUM_REGEX = new Regex(@"^(-?(?:0|[1-9]\d*))" + // any int or 0
-                @"(\.\d+)?" + // optional decimal point and digits after
-                @"([eE][-+]?\d+)?$", // optional scientific notation
-                RegexOptions.Compiled);
+        public RemesPathLexer()
+        {
+            jsonParser = new JsonParser(LoggerLevel.JSON5, false, false, false);
+        }
 
-        public static readonly HashSet<char> DELIMITERS = new HashSet<char> { ',', '[', ']', '(', ')', '{', '}', '.', ':'  };
+        public static readonly Regex TOKEN_REGEX = new Regex(
+            "(@)|" + // CurJson
+            @"(0x[\da-fA-F]+)|" + // hex numbers
+            @"(0|[1-9]\d*)(\.\d*)?([eE][-+]?\d+)?|" + // numbers
+            @"(\.\d+(?:[eE][-+]?\d+)?)|" + // numbers with leading decimal point
+            @"(->)|" + // delimiters containing characters that conflict with binops
+            @"(&|\||\^|=~|[!=]=|<=?|>=?|\+|-|//?|%|\*\*?)|" + // binops
+            @"([,\[\]\(\)\{\}\.:=!;])|" + // delimiters
+            @"([gjf]?(?<!\\)`(?:\\\\|\\`|[^`\r\n])*`)|" + // backtick strings
+            $@"({JsonParser.UNQUOTED_START}(?:[\p{{Mn}}\p{{Mc}}\p{{Nd}}\p{{Pc}}\u200c\u200d]|{JsonParser.UNQUOTED_START})*)|" + // unquoted strings
+            @"\#([^\n]*)(?:\n|\z)|" + // comments (Python-style, single-line)
+            @"(\S+)", // anything non-whitespace non-token stuff (will cause error)
+            RegexOptions.Compiled
+        );
 
-        public static readonly HashSet<char> BINOP_START_CHARS = new HashSet<char> {'!', '%', '&', '*', '+', '-', '/', '<', '=', '>', '^', '|', };
-
-        public static readonly HashSet<char> WHITESPACE = new HashSet<char> { ' ', '\t', '\r', '\n' };
+        public List<object> Tokenize(string q)
+        {
+            MatchCollection regtoks = TOKEN_REGEX.Matches(q);
+            int tokCount = regtoks.Count;
+            if (tokCount == 0)
+                throw new RemesLexerException("Empty query");
+            var toks = new List<object>(tokCount);
+            foreach (Match m in regtoks)
+            {
+                int successfulGroup = 1;
+                for (; successfulGroup < m.Groups.Count && !m.Groups[successfulGroup].Success; successfulGroup++) { }
+                switch (successfulGroup)
+                {
+                case 1: toks.Add(new CurJson()); break;
+                case 2: toks.Add(new JNode(long.Parse(m.Value.Substring(2), NumberStyles.HexNumber), Dtype.INT, 0)); break; // hex number
+                case 3: // number
+                    if (!(m.Groups[4].Success || m.Groups[5].Success))
+                    {
+                        // base 10 integer
+                        try
+                        {
+                            toks.Add(new JNode(long.Parse(m.Value), Dtype.INT, 0));
+                        }
+                        catch (OverflowException)
+                        {
+                            toks.Add(new JNode(double.Parse(m.Value, JNode.DOT_DECIMAL_SEP), Dtype.FLOAT, 0));
+                        }
+                    }
+                    else toks.Add(new JNode(double.Parse(m.Value, JNode.DOT_DECIMAL_SEP), Dtype.FLOAT, 0));
+                    break;
+                case 6: toks.Add(new JNode(double.Parse(m.Value, JNode.DOT_DECIMAL_SEP), Dtype.FLOAT, 0)); break; // number with leading decimal point
+                case 7: // map operator "->" (any token(s) that would otherwise be tokenized as multiple binops)
+                    switch (m.Value)
+                    {
+                    case "->": toks.Add('>'); break;
+                    }
+                    break;
+                case 8: toks.Add(Binop.BINOPS[m.Value]); break;
+                case 9: toks.Add(m.Value[0]); break; // delimiters
+                case 10: // backtick strings
+                    char starter = m.Value[0];
+                    StringBuilder sb = new StringBuilder();
+                    bool escaped = false;
+                    int startIdx = starter == '`' ? 1 : 2;
+                    for (int ii = startIdx; ii < m.Value.Length - 1; ii++)
+                    {
+                        char c = m.Value[ii];
+                        if (c == '\\')
+                        {
+                            if (escaped)
+                            {
+                                sb.Append('\\');
+                            }
+                            escaped = !escaped;
+                        }
+                        else if (c == '`')
+                        {
+                            if (!escaped)
+                                break;
+                            sb.Append('`');
+                            escaped = false;
+                        }
+                        else if (escaped)
+                        {
+                            // \r, \n, \t are the only escapes we'll give special treatment
+                            if (c == 'r')
+                                sb.Append('\r');
+                            else if (c == 'n')
+                                sb.Append('\n');
+                            else if (c == 't')
+                                sb.Append('\t');
+                            else
+                            {
+                                sb.Append('\\');
+                                sb.Append(c);
+                            }
+                            escaped = false;
+                        }
+                        else sb.Append(c);
+                    }
+                    string enquoted = sb.ToString();
+                    if (starter == 'j') // JSON literal
+                        toks.Add(jsonParser.Parse(enquoted));
+                    else if (starter == 'g') // regex
+                        toks.Add(new JRegex(new Regex(enquoted, RegexOptions.Compiled | RegexOptions.Multiline)));
+                    else if (starter == 'f') // f-string
+                        TokenizeFString(toks, enquoted, q, m.Index + 2);
+                    else
+                        toks.Add(new JNode(enquoted));
+                    break;
+                case 11: toks.Add(ParseUnquotedString(m.Value)); break;
+                case 12: /* toks.Add(new Comment(m.Value, false, m.Index)); */ break; // comments; currently we won't add them to the tokens, but maybe later?
+                default:
+                    throw new RemesLexerException(m.Index, q, $"Invalid token \"{m.Value}\"");
+                }
+            }
+            BraceMatchCheck(q, regtoks, toks, '(', ')');
+            BraceMatchCheck(q, regtoks, toks, '[', ']');
+            BraceMatchCheck(q, regtoks, toks, '{', '}');
+            return toks;
+        }
 
         public static readonly Dictionary<string, object> CONSTANTS = new Dictionary<string, object>
         {
@@ -82,102 +195,24 @@ Syntax error at position 3: Number with two decimal points
             ["false"] = false
         };
 
-        public JNode ParseNumber(string q)
-        {
-            StringBuilder sb = new StringBuilder();
-            // parsed tracks which portions of a number have been parsed.
-            // So if the int part has been parsed, it will be 1.
-            // If the int and decimal point parts have been parsed, it will be 3.
-            // If the int, decimal point, and scientific notation parts have been parsed, it will be 7
-            int parsed = 1;
-            char c;
-            while (ii < q.Length)
-            {
-                c = q[ii];
-                if (c >= '0' && c <= '9')
-                {
-                    sb.Append(c);
-                    ii++;
-                }
-                else if (c == '.')
-                {
-                    if (parsed != 1)
-                    {
-                        throw new RemesLexerException(ii, q, "Number with two decimal points");
-                    }
-                    parsed = 3;
-                    sb.Append('.');
-                    ii++;
-                }
-                else if (c == 'e' || c == 'E')
-                {
-                    if ((parsed & 4) != 0)
-                    {
-                        break;
-                    }
-                    parsed += 4;
-                    sb.Append('e');
-                    if (ii < q.Length - 1)
-                    {
-                        c = q[++ii];
-                        if (c == '+' || c == '-')
-                        {
-                            sb.Append(c);
-                            ii++;
-                        }
-                    }
-                }
-                else
-                {
-                    break;
-                }
-            }
-            if (parsed == 1)
-            {
-                try
-                {
-                    return new JNode(long.Parse(sb.ToString()), Dtype.INT, 0);
-                }
-                catch (OverflowException)
-                {
-                    // doubles can represent much larger numbers than 64-bit ints, albeit with loss of precision
-                    return new JNode(double.Parse(sb.ToString()), Dtype.FLOAT, 0);
-                }
-            }
-            return new JNode(double.Parse(sb.ToString(), JNode.DOT_DECIMAL_SEP), Dtype.FLOAT, 0);
-        }
+        public static readonly string[] LOOP_VAR_KEYWORDS = new string[] { "for" };
 
-        public JNode ParseQuotedString(string q)
-        {
-            bool escaped = false;
-            char c;
-            var sb = new StringBuilder();
-            while (ii < q.Length)
-            {
-                c = q[ii++];
-                if (c == '`')
-                {
-                    if (!escaped) {
-                        return new JNode(sb.ToString(), Dtype.STR, 0);
-                    }
-                    sb.Append(c);
-                    escaped = false;
-                }
-                else if (c == '\\')
-                {
-                    if (escaped)
-                    {
-                        sb.Append(c);
-                    }
-                    escaped = !escaped;
-                }
-                else
-                {
-                    sb.Append(c);
-                }                
-            }
-            throw new RemesLexerException(ii, q, "Unterminated quoted string");
-        }
+        public static readonly string[] NON_LOOP_VAR_KEYWORDS = new string[] { "var" };
+
+        public static readonly Dictionary<string, VariableAssignmentType> VAR_ASSIGN_KEYWORDS_TO_TYPES =
+            LOOP_VAR_KEYWORDS.Select(x => (x, VariableAssignmentType.LOOP))
+            .Concat(NON_LOOP_VAR_KEYWORDS.Select(x => (x, VariableAssignmentType.NORMAL)))
+            .ToDictionary(x => x.Item1, x => x.Item2);
+
+        public static readonly string LOOP_END_KEYWORD = "end";
+
+        public static readonly string[] MISC_KEYWORDS = new string[] { "not", LOOP_END_KEYWORD };
+
+        public static readonly HashSet<string> KEYWORDS =
+            CONSTANTS.Keys
+            .Concat(VAR_ASSIGN_KEYWORDS_TO_TYPES.Keys)
+            .Concat(MISC_KEYWORDS)
+            .ToHashSet();
 
         /// <summary>
         /// Parses a reference to a named function, or an unquoted string, or a reference to a constant like true or false or NaN
@@ -185,25 +220,9 @@ Syntax error at position 3: Number with two decimal points
         /// <param name="q"></param>
         /// <param name="ii"></param>
         /// <returns></returns>
-        public object ParseUnquotedString(string q)
+        public object ParseUnquotedString(string unquoted)
         {
-            char c = q[ii++];
-            StringBuilder sb = new StringBuilder();
-            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_'))
-            {
-                sb.Append(c);
-            }
-            while (ii < q.Length)
-            {
-                c = q[ii];
-                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_') || (c >= '0' && c <= '9'))
-                {
-                    sb.Append(c);
-                    ii++;
-                }
-                else { break; }
-            }
-            string uqs = sb.ToString();
+            string uqs = jsonParser.ParseUnquotedKeyHelper(unquoted, unquoted);
             if (CONSTANTS.ContainsKey(uqs))
             {
                 object con = CONSTANTS[uqs];
@@ -211,209 +230,205 @@ Syntax error at position 3: Number with two decimal points
                 {
                     return new JNode();
                 }
-                else if (con is double)
+                if (con is double d)
                 {
-                    return new JNode((double)con, Dtype.FLOAT, 0);
+                    return new JNode(d, Dtype.FLOAT, 0);
                 }
-                else
+                return new JNode((bool)con, Dtype.BOOL, 0);
+            }
+            if (Binop.BINOPS.TryGetValue(uqs, out Binop bop))
+                return bop;
+            if (UnaryOp.UNARY_OPS.TryGetValue(uqs, out UnaryOp unop))
+                return unop;
+            return new UnquotedString(uqs);
+        }
+
+        public static void BraceMatchCheck(string q, MatchCollection regtoks, List<object> toks, char open, char close)
+        {
+            int lastUnclosed = -1;
+            int unclosedCount = 0;
+            for (int ii = 0; ii < toks.Count; ii++)
+            {
+                int regTokIndex = ii >= regtoks.Count ? regtoks.Count - 1 : ii;
+                object tok = toks[ii];
+                if (tok is char c)
                 {
-                    return new JNode((bool)con, Dtype.BOOL, 0);
+                    if (c == open)
+                    {
+                        if (++unclosedCount >= MAX_RECURSION_DEPTH)
+                            throw new RemesLexerException(regtoks[regTokIndex].Index, q, $"Maximum recursion depth ({MAX_RECURSION_DEPTH}) in a RemesPath query reached");
+                        else if (unclosedCount == 1)
+                            lastUnclosed = regtoks[regTokIndex].Index;
+                    }
+                    else if (c == close && --unclosedCount < 0)
+                        throw new RemesLexerException(regtoks[regTokIndex].Index, q, $"Unmatched '{close}'");
                 }
             }
-            else if (Binop.BINOPS.ContainsKey(uqs))
+            if (unclosedCount > 0)
             {
-                return Binop.BINOPS[uqs];
-            }
-            else if (ArgFunction.FUNCTIONS.ContainsKey(uqs))
-            {
-                return ArgFunction.FUNCTIONS[uqs];
-            }
-            else
-            {
-                return new JNode(uqs, Dtype.STR, 0);
+                throw new RemesLexerException(lastUnclosed, q, $"Unclosed '{open}'");
             }
         }
 
-        public Binop ParseBinop(string q)
+        /// <summary>
+        /// RemesPath backtick string that will be parsed as string s
+        /// </summary>
+        public static string StringToBacktickString(string s)
         {
-            char c;
-            string bs = "";
-            string newbs = "";
-            while (ii < q.Length)
+            var sb = new StringBuilder();
+            sb.Append('`');
+            for (int ii = 0; ii < s.Length; ii++)
             {
-                c = q[ii];
-                newbs = bs + c;
-                if (Binop.BINOPS.ContainsKey(bs) && !Binop.BINOPS.ContainsKey(newbs))
+                char c = s[ii];
+                switch (c)
                 {
-                    break;
+                case '`': sb.Append("\\`"); break;
+                case '\\': sb.Append("\\\\"); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\t': sb.Append("\\t"); break;
+                case '\r': sb.Append("\\r"); break;
+                default: sb.Append(c); break;
                 }
-                bs = newbs;
-                ii++;
             }
-            return Binop.BINOPS[bs];
+            sb.Append('`');
+            return sb.ToString();
         }
 
-        public List<object> Tokenize(string q, out bool is_assignment_expr)
+        /// <summary>
+        /// Similar to Python and C#, RemesPath supports f-strings as of JsonTools v6.1.<br></br>
+        /// For example, if the input is [1, [2, "a"], "foo"]<br></br>
+        /// f`first element is {@[0]}, second is {@[1]}. Does the final element begin with f? {ifelse(s_slice(@[2], 0) == f, YES, NO)}! {{LITERAL CURLY}}`<br></br>
+        /// returns "First element is 1, second is [2, \"a\"]. Does the final element begin with f? YES! {LITERAL CURLY}"<br></br>
+        /// Notice that if you want a literal curlybrace in an f-string, you need to double up the curlybrace, as shown above.
+        /// </summary>
+        private void TokenizeFString(List<object> tokens, string fstring, string query, int startIndex)
         {
-            is_assignment_expr = false;
-            JsonParser jsonParser = new JsonParser();
-            var tokens = new List<object>();
-            ii = 0;
-            char c;
-            JNode quoted_string;
-            object unquoted_string;
-            Binop bop;
-            int parens_opened = 0;
-            int last_unclosed_paren = 0;
-            int square_braces_opened = 0;
-            int last_unclosed_squarebrace = 0;
-            int curly_braces_opened = 0;
-            int last_unclosed_curlybrace = 0;
-            while (ii < q.Length)
+            int len = fstring.Length;
+            // under the hood, we will interpret the f-string as a call to a non-vectorized function,
+            // s_cat, which takes any nonzero number of arguments
+            // and concatenates their string represenatations.
+            tokens.Add(new UnquotedString("s_cat"));
+            tokens.Add('(');
+            int lastUnmatchedOpenCurly = 0;
+            bool insideCurlyBraces = false;
+            var sb = new StringBuilder();
+            for (int ii = 0; ii < len; ii++)
             {
-                c = q[ii++];
-                if (WHITESPACE.Contains(c)) { continue; }
-                else if (c == '@')
+                char c = fstring[ii];
+                switch (c)
                 {
-                    tokens.Add(new CurJson());
-                } 
-                else if (c >= '0' && c <= '9')
-                {
-                    object curtok;
-                    ii--;
-                    curtok = ParseNumber(q);
-                    tokens.Add(curtok);
-                }
-                else if (DELIMITERS.Contains(c))
-                {
-                    tokens.Add(c);
-                    // check for unmatched parentheses, do counting
-                    switch (c)
+                case '{':
+                    if (ii == len - 1)
                     {
-                        case '(':
-                            if (parens_opened == 0)
-                                last_unclosed_paren = ii;
-                            else if (parens_opened == MAX_RECURSION_DEPTH)
-                                throw new RemesLexerException(ii, q, $"Maximum recursion depth ({MAX_RECURSION_DEPTH}) exceeded");
-                            parens_opened++; 
-                            break;
-                        case ')':
-                            if (--parens_opened < 0)
-                            {
-                                throw new RemesLexerException(ii, q, "Unmatched ')'");
-                            }
-                            break;
-                        case '[':
-                            if (square_braces_opened == 0) { last_unclosed_squarebrace = ii; }
-                            square_braces_opened++;
-                            break;
-                        case ']':
-                            if (--square_braces_opened < 0)
-                            {
-                                throw new RemesLexerException(ii, q, "Unmatched ']'");
-                            }
-                            break;
-                        case '{':
-                            if (curly_braces_opened == 0) { last_unclosed_curlybrace = ii; }
-                            curly_braces_opened++;
-                            break;
-                        case '}':
-                            if (--curly_braces_opened < 0)
-                            {
-                                throw new RemesLexerException(ii, q, "Unmatched '}'");
-                            }
-                            break;
+                        if (!insideCurlyBraces)
+                            lastUnmatchedOpenCurly = ii;
+                        goto unmatchedOpenCurly;
                     }
-                }
-                else if (c == 'g')
-                {
-                    if (q[ii] == '`')
+                    if (fstring[ii + 1] == '{')
                     {
+                        sb.Append(c); // {{ matching literal {
                         ii++;
-                        quoted_string = ParseQuotedString(q);
-                        tokens.Add(new JRegex(new Regex((string)quoted_string.value)));
                     }
                     else
                     {
-                        ii--;
-                        unquoted_string = ParseUnquotedString(q);
-                        tokens.Add(unquoted_string);
-                    }
-                }
-                else if (c == 'j')
-                {
-                    if (q[ii] == '`')
-                    {
-                        ii++;
-                        quoted_string = ParseQuotedString(q);
-                        tokens.Add(jsonParser.Parse((string)quoted_string.value));
-                    }
-                    else
-                    {
-                        ii--;
-                        unquoted_string = ParseUnquotedString(q);
-                        tokens.Add(unquoted_string);
-                    }
-                }
-                else if (c == '`')
-                {
-                    quoted_string = ParseQuotedString(q);
-                    tokens.Add(quoted_string);
-                }
-                else if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_'))
-                {
-                    ii--;
-                    unquoted_string = ParseUnquotedString(q);
-                    tokens.Add(unquoted_string);
-                }
-                else if (BINOP_START_CHARS.Contains(c))
-                {
-                    if (c == '=')
-                    {
-                        // could be the assignment operator
-                        c = q[ii];
-                        if (c != '=' && c != '~')
+                        if (insideCurlyBraces)
+                            goto unmatchedOpenCurly;
+                        lastUnmatchedOpenCurly = ii;
+                        insideCurlyBraces = true;
+                        if (sb.Length > 0)
                         {
-                            // it's not the first token of "==" or "=~", so it's an assignment expression
-                            if (is_assignment_expr)
-                            {
-                                throw new RemesLexerException(ii, q, "RemesPath queries can contain at most one assignment expression");
-                            }
-                            if (tokens.Count == 0)
-                            {
-                                throw new RemesLexerException(ii, q, "Assignment expression with no left-hand side");
-                            }
-                            is_assignment_expr = true;
-                            tokens.Add('=');
-                            continue;
+                            string newTok = sb.ToString();
+                            sb = new StringBuilder();
+                            tokens.Add(new JNode(newTok));
+                            tokens.Add(',');
                         }
                     }
-                    ii--;
-                    bop = ParseBinop(q);
-                    tokens.Add(bop);
+                    break;
+                case '}':
+                    if (insideCurlyBraces)
+                    {
+                        insideCurlyBraces = false;
+                        string interpolatedQuery = sb.ToString();
+                        List<object> interpolatedTokens = Tokenize(interpolatedQuery);
+                        tokens.AddRange(interpolatedTokens);
+                        sb = new StringBuilder();
+                        if (ii < len - 1)
+                            tokens.Add(',');
+                    }
+                    else if (ii < len - 1 && fstring[ii + 1] == '}')
+                    {
+                        sb.Append(c); // }} representing literal }
+                        ii++;
+                    }
+                    else
+                        throw new RemesLexerException(startIndex + ii, query,
+                            "'{' characters are not allowed in f-strings except to close an interpolated section or in the \"}}\" sequence that represents a literal '}' character.");
+                    break;
+                case '=':
+                    if (insideCurlyBraces)
+                        throw new RemesLexerException(startIndex + ii, query, "'=' tokens (signifying a mutation expression) are not allowed inside f-string interpolated sections");
+                    sb.Append(c);
+                    break;
+                case ';':
+                    if (insideCurlyBraces)
+                        throw new RemesLexerException(startIndex + ii, query, "';' tokens (signifying the end of a statement) are not allowed inside f-string interpolated sections");
+                    sb.Append(c);
+                    break;
+                default:
+                    sb.Append(c);
+                    break;
+                }
+            }
+            if (insideCurlyBraces)
+                goto unmatchedOpenCurly;
+            if (sb.Length > 0)
+                tokens.Add(new JNode(sb.ToString()));
+            tokens.Add(')'); // close paren for the s_cat function added at the beginning
+            return;
+            unmatchedOpenCurly:
+            throw new RemesLexerException(startIndex + lastUnmatchedOpenCurly, query, "unmatched '{' in f-string");
+        }
+
+        public static string TokensToString(List<object> tokens)
+        {
+            if (tokens == null)
+                return "null";
+            var sb = new StringBuilder();
+            foreach (object tok in tokens)
+            {
+                if (tok is int || tok is long || tok is double || tok is string || tok == null || tok is Regex)
+                {
+                    sb.Append(ArgFunction.ObjectsToJNode(tok).ToString());
+                }
+                else if (tok is char c)
+                {
+                    sb.Append('\'');
+                    JNode.CharToSb(sb, c);
+                    sb.Append('\'');
+                }
+                else if (tok is UnquotedString uqs)
+                {
+                    sb.Append(uqs.ToString());
+                }
+                else if (tok is JNode node)
+                {
+                    sb.Append(node.ToString());
+                }
+                else if (tok is Binop bop)
+                {
+                    sb.Append(bop.ToString());
+                }
+                else if (tok is UnaryOp unop)
+                {
+                    sb.Append(unop.ToString());
                 }
                 else
                 {
-                    throw new RemesLexerException(ii, q, "Unexpected character");
+                    sb.Append(tok);
                 }
+                sb.Append(", ");
             }
-            if (parens_opened > 0)
-            {
-                throw new RemesLexerException(last_unclosed_paren, q, "Unclosed '('");
-            }
-            if (curly_braces_opened > 0)
-            {
-                throw new RemesLexerException(last_unclosed_curlybrace, q, "Unclosed '{");
-            }
-            if (square_braces_opened > 0)
-            {
-                throw new RemesLexerException(last_unclosed_squarebrace, q, "Unclosed '['");
-            }
-            if (tokens[tokens.Count - 1] is char last_c && last_c == '=')
-            {
-                throw new RemesLexerException(ii, q, "Assignment expression with no right-hand side");
-            }
-            return tokens;
+            return sb.ToString();
         }
     }
 }

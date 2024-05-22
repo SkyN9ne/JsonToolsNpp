@@ -3,6 +3,7 @@ Reads a JSON document and outputs YAML that can be serialized back to
 equivalent (or very nearly equivalent) JSON.
 */
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -44,12 +45,12 @@ namespace JSON_Tools.JSON_Tools
 
         private bool IsIterable(JNode x)
         {
-            return (x == null) ? false : x is JObject || x is JArray;
+            return x != null && x is JObject || x is JArray;
         }
 
-        private bool StartsOrEndsWith(string x, string suf_or_pref)
+        private bool StartsOrEndsWith(string x, string sufOrPref)
         {
-            return (x.Length > 0) && (suf_or_pref.Contains(x[0]) || suf_or_pref.Contains(x[x.Length - 1]));
+            return (x.Length > 0) && (sufOrPref.Contains(x[0]) || sufOrPref.Contains(x[x.Length - 1]));
         }
 
         private string EscapeBackslash(string s)
@@ -98,21 +99,21 @@ namespace JSON_Tools.JSON_Tools
 
         private string YamlKeyRepr(string k)
         {
-            bool is_float_str = false;
+            bool isFloatStr = false;
             try
             {
                 double.Parse(k, JNode.DOT_DECIMAL_SEP);
-                is_float_str = true;
+                isFloatStr = true;
             }
             catch { }
-            if (is_float_str)
+            if (isFloatStr)
             {
                 // k is a string representing a number; we need to enquote it so that
                 // a YAML parser will recognize that it is not actually a number.
                 return "'" + k + "'";
             }
-            Regex forbidden_key_chars = new Regex(@"[\t :]");
-            if (forbidden_key_chars.IsMatch(k))
+            Regex forbiddenKeyChars = new Regex(@"[\t :]");
+            if (forbiddenKeyChars.IsMatch(k))
             {
                 // '\t', ' ', and ':' are all illegal inside a YAML key. We will escape those out
                 return EscapeBackslashKey(k);
@@ -166,52 +167,49 @@ namespace JSON_Tools.JSON_Tools
         private void BuildYaml(StringBuilder sb, JNode tok, int depth, int indent)
         {
             // start the line with depth * indent blank spaces
-            string indent_space = new string(' ', indent * depth);
-            if (tok is JObject)
+            string indentSpace = new string(' ', indent * depth);
+            if (tok is JObject o)
             {
-                var o = (JObject)tok;
                 if (o.children.Count == 0)
                 {
-                    sb.Append(indent_space + "{}\n");
+                    sb.Append(indentSpace + "{}\n");
                     return;
                 }
-                foreach (string k in o.children.Keys)
+                foreach (KeyValuePair<string, JNode> kv in o.children)
                 {
-                    JNode v = o[k];
                     // Console.WriteLine("k = " + k);
-                    if (IsIterable(v))
+                    if (IsIterable(kv.Value))
                     {
-                        sb.Append(String.Format("{0}{1}:\n", indent_space, YamlKeyRepr(k)));
-                        BuildYaml(sb, v, depth + 1, indent);
+                        sb.Append(String.Format("{0}{1}:\n", indentSpace, YamlKeyRepr(kv.Key)));
+                        BuildYaml(sb, kv.Value, depth + 1, indent);
                     }
                     else
                     {
                         sb.Append(String.Format("{0}{1}: {2}\n",
-                                             indent_space,
-                                             YamlKeyRepr(k),
-                                             YamlValRepr(v)));
+                                             indentSpace,
+                                             YamlKeyRepr(kv.Key),
+                                             YamlValRepr(kv.Value)));
                     }
                 }
             }
-            else if (tok is JArray)
+            else if (tok is JArray a)
             {
-                JArray a = (JArray)tok;
                 if (a.children.Count == 0)
                 {
-                    sb.Append(indent_space + "[]\n");
+                    sb.Append(indentSpace + "[]\n");
                     return;
                 }
                 foreach (JNode child in a.children)
                 {
                     if (IsIterable(child))
                     {
-                        sb.Append(String.Format("{0}-\n", indent_space));
+                        sb.Append(String.Format("{0}-\n", indentSpace));
                         BuildYaml(sb, child, depth + 1, indent);
                     }
                     else
                     {
                         sb.Append(String.Format("{0}- {1}\n",
-                            indent_space, YamlValRepr(child)));
+                            indentSpace, YamlValRepr(child)));
                     }
                 }
             }
@@ -233,10 +231,10 @@ namespace JSON_Tools.JSON_Tools
             return Dump(json, 4);
         }
 
-        //public void DumpJsonOrYaml(string out_type, string fname)
+        //public void DumpJsonOrYaml(string outType, string fname)
         //{
         //    JsonParser jsonParser = new JsonParser();
-        //    out_type = out_type.ToLower();
+        //    outType = outType.ToLower();
         //    StreamReader streamReader = new StreamReader(fname);
         //    string jsonstr = streamReader.ReadToEnd();
         //    JNode json = jsonParser.Parse(jsonstr);
@@ -245,9 +243,9 @@ namespace JSON_Tools.JSON_Tools
         //    // sw.WriteLine(EncodeNonAsciiCharacters(dumper.Dump(json, 2)));
         //    // the above line would convert UTF-16 characters to \uxxxx format.
         //    // That may be desirable, but in my experience it is unnecessary.
-        //    if (out_type[0] == 'j')
+        //    if (outType[0] == 'j')
         //    {
-        //        sw.WriteLine((out_type.Length == 2 && out_type[1] == 'p') ? json.PrettyPrint(4) : json.ToString());
+        //        sw.WriteLine((outType.Length == 2 && outType[1] == 'p') ? json.PrettyPrint(4) : json.ToString());
         //    }
         //    else
         //    {
