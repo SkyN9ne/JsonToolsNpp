@@ -45,7 +45,6 @@ namespace JSON_Tools.Forms
             isRepopulatingErrorGrid = true;
             this.fname = fname;
             this.lints = lints;
-            Text = "JSON errors in current file";
             ErrorGrid.Rows.Clear();
             int interval = 1;
             int lintCount = lints is null ? 0 : lints.Count;
@@ -66,7 +65,7 @@ namespace JSON_Tools.Forms
                 var row = new DataGridViewRow();
                 row.CreateCells(ErrorGrid);
                 row.Cells[0].Value = lint.severity;
-                row.Cells[1].Value = lint.message;
+                row.Cells[1].Value = lint.TranslateMessageIfDesired(true);
                 row.Cells[2].Value = lint.pos;
                 ErrorGrid.Rows.Add(row);
                 if (interval == 1)
@@ -160,15 +159,17 @@ namespace JSON_Tools.Forms
             int lintCount = lints == null ? 0 : lints.Count;
             if (lintCount == 0)
             {
-                MessageBox.Show($"No JSON syntax errors (at or below {Main.settings.logger_level} level) for {fname}",
+                Translator.ShowTranslatedMessageBox(
+                    "No JSON syntax errors (at or below {0} level) for {1}",
                     "No JSON syntax errors for this file",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBoxButtons.OK, MessageBoxIcon.Information,
+                    2, Main.settings.logger_level, fname);
                 return;
             }
             var lintArrChildren = new List<JNode>();
             foreach (JsonLint lint in lints)
             {
-                var lintObj = lint.ToJson();
+                var lintObj = lint.ToJson(true);
                 lintArrChildren.Add(lintObj);
             }
             var lintArr = new JArray(0, lintArrChildren);
@@ -218,10 +219,16 @@ namespace JSON_Tools.Forms
             var selRowIndex = cells[0].RowIndex;
             if (!IsValidRowIndex(selRowIndex))
                 return;
-            if (e.KeyCode == Keys.Up && selRowIndex > 0) // move up
-                ChangeSelectedRow(selRowIndex, selRowIndex - 1);
-            else if (e.KeyCode == Keys.Down && selRowIndex < ErrorGrid.RowCount - 1)
-                ChangeSelectedRow(selRowIndex, selRowIndex + 1); // move down
+            if (e.KeyCode == Keys.Up) // move up (unless on first row)
+            {
+                if (selRowIndex > 0)
+                    ChangeSelectedRow(selRowIndex, selRowIndex - 1);
+            }
+            else if (e.KeyCode == Keys.Down) // move down (unless on last row)
+            {
+                if (selRowIndex < ErrorGrid.RowCount - 1)
+                    ChangeSelectedRow(selRowIndex, selRowIndex + 1);
+            }
             // for most keys, seek first row after current row
             // whose description start with that key's char
             else if (e.KeyValue >= ' ' && e.KeyValue <= 126)

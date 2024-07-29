@@ -258,7 +258,7 @@ Beginning in [v7.0](/CHANGELOG.md#700---2024-02-09), this automatic validation w
 
 *Added in version v5.0.0*
 
-The `Path to current position` menu option lets you fill the clipboard with the path to the current position in the document.
+The `Path to current position` menu option lets you fill the clipboard with the path to the current position in the document. The path is formatted according to the [`key_style` and `path_separator` settings](#key_style-and-path_separator-settings), described below.
 
 This replaced the old `Path to current line` menu option.
 
@@ -275,13 +275,25 @@ The `Path to current line` menu option lets you fill the clipboard with the path
 ![Getting the path to current line](/docs/path%20to%20current%20line.PNG)
 </details>
 
-### Key style ###
+### `key_style` and `path_separator` settings ###
 
-By default, the path clipped is in RemesPath style (dot syntax and backtick-quoted strings). You can get JavaScript style (dot syntax and c-style quoted strings in square brackets) or Python style (c-style quoted strings in square brackets) in the settings.
+If you are using JsonTools [v8](/CHANGELOG.md#800---2024-06-29) or older, you can ignore the below discussion of the `path_separator` setting, as it was added in [v8.1](/CHANGELOG.md#810---unreleased-yyyy-mm-dd).
+
+The `key_style` and `path_separator` settings control the formatting of the `Path to current position` command.
+
+The `key_style` setting has the following options. `RemesPath` style is the default.
+- `RemesPath` style (dot syntax and backtick-quoted strings)
+- `JavaScript` style (dot syntax and C-style quoted strings in square brackets)
+- `Python` style (C-style quoted strings in square brackets)
+
+If you prefer for keys and indices to be separated by a custom character, use the `path_separator` setting. __`path_separator` ignored when it is set to the default `"\u0001"`; otherwise `key_style` is ignored.__ The `path_separator` character *cannot* be any of the characters in the following JSON string: `"\"0123456789"`.
+
 For example, the different path styles might look like this:
-- Remespath (default): ``[`a b`][0].c``
-- Python: `['a b'][0]['c']`
-- JavaScript: `['a b'][0].c` 
+- `Remespath` (default): ``[`a b`][0].c``
+- `Python`: `['a b'][0]['c']`
+- `JavaScript`: `['a b'][0].c`
+- `path_separator` set to `/`: `/"a b"/0/c` (the `"a b"` key is in quotes because it does not match the regular expression `^[_a-zA-Z][_a-zA-Z\d]*$`)
+- `path_separator` set to `c`: `c"a b"c0c"c"` (the `"c"` key is also in quotes because it contains the `path_separator`)
 
 ## RemesPath ##
 
@@ -306,15 +318,23 @@ Prior to [v6.0](/CHANGELOG.md#600---2023-12-13), submitting a query automaticall
 
 If you want to perform some simple search or find-and-replace operations on JSON without worrying about [RemesPath](/docs/RemesPath.md) syntax, you can use the find/replace form.
 
+Below is an example of a simple search for the substring `on` in keys and values. The tree view displays all the *strings that contain `on`*, or the *values associated with a key that contains `on`.*
+
 ![Find/replace form simple find](/docs/find%20replace%20form%20simple%20find.PNG)
+
+Below is an example using the find/replace form to replace the regular expression `(s?in)` with the replacement `$1$1$`, which effectively triples every instance of (`sin` or `in`) in values, converting `raisin` into `raisinsinsin` and `wine` into `wininine`. __When using the `Replace all` button, keys are not affected.__
 
 ![Find/replace form simple replace](/docs/find%20replace%20form%20simple%20replace.PNG)
 
-This form provides lets you perform text searches on keys and values in JSON, and also lets you do mathematical find/replace operations on numeric values.
+This form provides lets you perform text searches on keys and values in JSON, and also lets you do __mathematical__ find/replace operations on numeric values.
 
 The default behavior of the form is to do a regular expression search on both keys and values, or a text find/replace on values only. You can change that under `Show advanced options`.
 
+Below is an example of searching for all *children of the `year` key* (because `Root` is set to `.year`) that are *less than the number `2010`* (because `Find...` is `< 2010` and the `Math expression` option is checked). This means that the tree view shows only the numbers between `2007` and `2009` in the `year` array.
+
 ![Find/replace form math find](/docs/find%20replace%20form%20math%20find.PNG)
+
+Below is an example of *replacing* (by clicking `Replace all`) values *in the `year` array* (by setting `Root` to `.year`) by *subtracting `500` from all values less than `2010`* (because the `Find...` is set to `< 2010` and `Replace with...` is set to `- 500`, and the `Math expression` box is checked).
 
 ![Find/replace form math replace](/docs/find%20replace%20form%20math%20replace.PNG)
 
@@ -327,6 +347,14 @@ Starting in version [4.11.0](/CHANGELOG.md#4110---2023-03-15), non-regular-expre
 The form has limited functionality. For example, you can't perform a search on keys and a replacement on values. However, the form generates RemesPath queries in the RemesPath query box in the tree viewer, so you can use those queries as a starting point.
 
 Beginning in [v6.0](/CHANGELOG.md#600---2023-12-13), when a `Replace all` query is run, only the values that were replaced are displayed in the tree. Prior to that, the tree would show the entire JSON after a successful `Replace all` query.
+
+Sometimes you may wish to do find/replace operations __only in *direct children or grandchildren* of an object or array,__ which can be done by *unchecking* the `Recursive search?` button under the `Show advanced options` checkbox.
+
+The find/replace form finds *grandchildren as well as children* in non-recursive mode because of some weirdness in RemesPath syntax.
+
+Below is an example of searching *only direct children or grandchildren* (by unchecking `Recursive search?`) that are less than `0` (because `Find...` is `< 0` and the `Math expression` box is checked).
+
+![Find/replace form non-recursive search](/docs/find%20replace%20form%20NOT%20RECURSIVE.PNG)
 
 ## JSON to CSV ##
 
@@ -357,7 +385,7 @@ Populating the tree is *much* more expensive than parsing JSON or executing Reme
 
 ![Only direct children of the root are displayed for a big file](/docs/partial%20tree%20load%20example.PNG)
 
-For best performance, you can disable the tree view completely. If the JSON is a single scalar (bool, int, float, string, null, or date), it will display. For arrays and objects, you will only see the type icon.
+For best performance, you can disable the tree view completely. If the JSON is a single scalar (bool, int, float, string, null), it will display. For arrays and objects, you will only see the type icon.
 
 The `View all subtrees` checkbox on the JSON viewer form allows you to quickly toggle between viewing the full tree and only the direct children. Some notes on the checkbox:
 - If the full tree will not be shown when the tree is loaded, this box is unchecked; otherwise it is checked.
@@ -376,8 +404,8 @@ The `View all subtrees` checkbox on the JSON viewer form allows you to quickly t
 
 You can right click on a tree node to copy any of the following to the clipboard:
 * Value
-* Key/index (customizable via [key style](#key-style))
-* Path (see [key style](#key-style))
+* Key/index (see the [the `key_style` and `path_separator` settings](#key_style-and-path_separator-settings))
+* Path (see the `key_style` and `path_separator` settings)
 
 In versions 3.4.0 through 3.6.1.1, you can also click on the `Current path` button beneath the tree to copy the path of the currently selected tree node to the clipboard. The path will have the style of whatever default style you chose in the settings (shown in the adjacent text box). In versions 3.7.0 and above, this button does not exist, so just select and copy the text in the box.
 
@@ -767,17 +795,53 @@ Of course, sometimes an API request will fail. You can click the [View errors bu
 
 ## Getting JSON from local directories ##
 
-If you want to open up all the JSON files in a directory, look to the bottom center left. There you can customize what type(s) of [filename search pattern](https://docs.microsoft.com/en-us/dotnet/api/system.io.directoryinfo.enumeratefiles?view=net-6.0#system-io-directoryinfo-enumeratefiles) you want to use (by default files with the `.json` extension), choose whether to recursively search in subdirectories (false by default), and finally search for files using the settings you chose.
+If you want to open up all the JSON files in a directory, here's how to do it:
+1. Choose whether you want to search in subdirectories.
+2. Choose what [filename search pattern(s)](https://docs.microsoft.com/en-us/dotnet/api/system.io.directoryinfo.enumeratefiles?view=net-6.0#system-io-directoryinfo-enumeratefiles) you want to use (by default files with the `.json` extension). Beginning in [v8.1](/CHANGELOG.md#810---unreleased-yyyy-mm-dd), these filename search patterns can include `\` and `/` characters, and `**` can be used to match any number of characters (including `\`).
+3. Choose what directory you want to search. *If you are using a version of JsonTools __older than [v8.0](/CHANGELOG.md#800---2024-06-29)__*, you can do this in one of the following ways:
+    - Choose a directory using a GUI dialog. To do this, *make sure that the central list box has the default value of `Previously visited directories...`*, then click the `Choose directory...` button, and a dialog will pop up. Once you select a directory and click `OK`, JsonTools will search the chosen directory.
+    ![Choose a directory using a modal dialog](/docs/json_from_files_and_apis%20get%20json%20in%20directory%20USING%20DIALOG.PNG)
+    - Choose a previously searched directory from the central list box, *then click the `Choose directory...` button.*
+    ![Choose a directory using a dropdown list](/docs/json_from_files_and_apis%20get%20json%20in%20directory%20USING%20DROPDOWN%20LIST.PNG)
+4. Choosing a directory takes two steps *if you are using JsonTools __[v8.0](/CHANGELOG.md#800---2024-06-29) or newer:__*
+    1. Choose a directory in one of the following ways:
+         - Open a dialog (as shown in step 3 above)
+         - Select a previously searched directory (as shown above)
+         - Type a directory name into the list box.
+    2. Click the `Search directories` button below the list box.
+    ![Choosing a directory in JsonTools v8.0](/docs/json_from_files_and_apis%20get%20json%20in%20directory%20VERSION%208p0.PNG)
 
-For every file that the JSON tries and fails to parse, the exception will be caught and saved so you can view it later with the `View errors button`.
+For every file that the JSON tries and fails to parse, the exception will be caught and saved so you can view it later with the [`View errors` button](#viewing-errors).
 
-![JSON grepper/API requester search JSON in local directories](/docs/json_from_files_and_apis%20get%20json%20in%20directory.PNG)
+Beginning in version [v8.0](/CHANGELOG.md#800---2024-06-29), this tool will stop reading files and show an error message once the combined size of all the files to be parsed exceeds about 429 megabytes (215 megabytes for 32-bit Notepad++). This change was made to avoid out-of-memory errors that could cause Notepad++ to crash.
 
 ### Viewing results in a buffer ###
 
 If you want to see the JSON found by this tool, just click the `View results in buffer` button. This will open a new buffer in Notepad++ with an object mapping filenames and URLs to the JSON associated with them.
 
+Below is an example of the tree view showing JSON searched from a local directory and two APIS, then displayed as a tree view with the `View results in buffer` button.
+
+![Grepper form - View results in buffer button](/docs/json_from_files_and_apis%20view%20results%20in%20buffer%20button.PNG)
+
 This form has its own tree viewer associated with this buffer. You can use this plugin's normal tree viewers for other buffers. If you close the buffer, the tree viewer is destroyed.
+
+If you wish to filter the files shown in the tree view, you may find the [tree view's find/replace form](#find-and-replace-form) useful.
+
+For example, if you wanted to search only files with `foo` (case-sensitive) in their filename, you would do the following:
+1. Click `Find/replace` at the bottom of the tree view.
+2. Input the settings (`Find...` = `foo`, `Search in keys or values?` = `Keys`, `Recursive search?` = unchecked, `Ignore case?` = unchecked) in the find/replace form.
+3. Click `Find all` in the find/replace form.
+4. Look at the tree view, and see which files are displayed. 
+
+### Reporting progress when parsing large amounts of JSON ###
+
+When getting JSON from [directories](#getting-json-from-local-directories) or [APIs](#sending-rest-api-requests), it is possible that JsonTools will need to parse very large amounts of JSON. JsonTools can parse approximately 30 megabytes of JSON per second per thread, but its rate of parsing depends on many factors, chiefly the number of documents to be parsed.
+
+Beginning in [v8.1](/CHANGELOG.md#810---unreleased-yyyy-mm-dd), it will report progress while reading documents from the hard drive, and then report progress again when parsing documents. To report progress, JsonTools will open up a progress reporting form with a green progress bar and a short explanation of what is happening.
+
+This progress reporting only takes place if the total amount of text to be parsed/read is at least 50 megabytes, or if there are at least 16 files (64 when reading from hard drive) with a combined total of 8 megabytes of text.
+
+To be clear, __versions of JsonTools earlier than [v8.1](/CHANGELOG.md#810---unreleased-yyyy-mm-dd) did not have progress reporting for this form,__ but the underlying process was still very reliable, and *just because Notepad++ stopped responding doesn't mean that JsonTools had an error or went into an infinite loop.*
 
 ## Clearing selected files ##
 
@@ -901,7 +965,7 @@ This JSON schema generator only produces schemas with the following keywords:
 
 As of version [4.11.0](/CHANGELOG.md#4110---2023-03-15), you can set up this plugin to *automatically validate* JSON files with certain filenames whenever you open them. (*starting in version [4.11.2](/CHANGELOG.md#4112---2023-03-21), auto-validation also occurs when files are saved or renamed*)
 
-Let's try out this feature! We can use the plugin command `Choose schemas to automatically validate filename patterns`, which will open up a file that looks like this.
+Let's try out this feature! We can use the plugin command `Choose schemas to automatically validate filename patterns` (renamed in [v8.1](/CHANGELOG.md#810---unreleased-yyyy-mm-dd) to `Validate files with JSON schema if name matches pattern`), which will open up a file that looks like this.
 
 ![schemas to filename patterns file new](/docs/schemasToFnamePatterns%20with%20no%20fname%20patterns.PNG)
 
@@ -934,6 +998,30 @@ Thus, `cot` would give the icon sequence `(compress, path to current position, t
 This command checks JSON syntax and updates the [error form and status bar](/docs/README.md#error-form-and-status-bar). It *will not* validate using JSON schema. If there are any [remembered selections](#working-with-selections), it will only parse those selections.
 
 This command will *always* attempt to parse the document as JSON, unless the file extension is `.jsonl`, in which case it will attempt to parse the document as [JSON Lines](#json-lines-documents). This will override [regex mode](#regex-search-form) and [INI mode](#parsing-ini-files).
+
+## Styling of forms ##
+
+By default, the forms in JsonTools attempt to use the same color scheme as Notepad++. If you would prefer to have the forms always use the system defaults and ignore Notepad++, you can set the `use_npp_styling` setting to `False`.
+
+For example, the image below shows what forms look like by default with the MossyLawn theme:
+
+![Forms appearance use_npp_styling TRUE](/docs/use_npp_styling%20TRUE%20example.PNG)
+
+And below is what the forms look like with `use_npp_styling` set to `False`:
+
+![Forms appearance use_npp_styling FALSE](/docs/use_npp_styling%20FALSE%20example.PNG)
+
+Beginning in [v8.0](/CHANGELOG.md#800---2024-06-29), the font size for nodes in the tree view is also configurable with the `tree_view_font_size` setting. Below is a side-by-side comparison showing the effect of this setting.
+
+![Side-by-side comparison demonstrating tree_view_font_size setting](/docs/tree_view_font_size%20side-by-side%20comparison.PNG)
+
+## Customizing settings ##
+
+The `Settings` menu item opens a dialog that allows you to customize various aspects of JsonTools. If this documentation references a *setting*, it can be customized there.
+
+These settings are stored in a config file in your plugins config folder. As shown below (look at the file path at the top of the image), this file will be in the directory `\AppData\Roaming\Notepad++\plugins\config\JsonTools\` if you have a normal *ProgramFiles* installation, and in the directory `\plugins\Config\JsonTools\` relative to the root of a *portable* installation.
+
+![Settings form and config file](/docs/settings%20form%20and%20config%20file.PNG)
 
 ## DSON ##
 

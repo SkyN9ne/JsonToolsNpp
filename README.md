@@ -15,7 +15,7 @@ If you have any issues, see if [updating to the latest release](https://github.c
     * [Python-style comments](/CHANGELOG.md#4120---2023-03-28)
     * Missing commas and colons
     * Unterminated strings, arrays, and objects
-5. [Get the path to the current line](/docs/README.md#path-to-current-line)
+5. [Get the path to the current position](/docs/README.md#path-to-current-position)
 6. Query and edit JSON with:
     * a [find/replace form](/docs/README.md#find-and-replace-form)
     * an [array sorting form](/docs/README.md#sort-form)
@@ -49,6 +49,20 @@ You can unzip the 32-bit download to `.\Program Files (x86)\Notepad++\plugins\Js
 You can unzip the 64-bit download to `C:\Program Files\Notepad++\plugins\JsonTools\JsonTools.dll`.
 
 Alternatively, you can follow these [installation instructions](https://npp-user-manual.org/docs/plugins/) to install the latest version of the plugin from Notepad++.
+
+### Downloading unreleased versions ###
+
+You can also download recently committed but unreleased versions of JsonTools by downloading the appropriate GitHub artifact in the following way:
+1. Go to the [commit history](https://github.com/molsonkiko/JsonToolsNppPlugin/commits/main/) of JsonTools.
+2. Most commits will have a green checkmark and the text `4/4` next to their commit message. Click on it.
+3. A dropdown menu showing the CI tasks will appear. Click on one of the `Details` links. [Here's an example of a page that this leads to.](https://github.com/molsonkiko/JsonToolsNppPlugin/actions/runs/9767448644/job/26962739908).
+4. Click the `Summary` link near the top-left corner of the page. [Here's an example of the page this leads to.](https://github.com/molsonkiko/JsonToolsNppPlugin/actions/runs/9767448644)
+5. If you chose a commit that was made in the last 90 days, at the bottom of this page you will find links to download `plugin_dll_x64` (a zip archive containing 64-bit `JsonTools.dll`) or `plugin_dll_x86` (a zip archive containing 32-bit `JsonTools.dll`). Download the appropriate binary for your current Notepad++ installation.
+
+If you also want to download the most recent [translation to another language](#translating-jsontools-to-another-language), you will need to also download the most up-to-date translation file for that language from [the `translation` folder of this repo](https://github.com/molsonkiko/JsonToolsNppPlugin/tree/main/translation). To do that:
+1. Click on one of the files in the list.
+2. Click the download icon near the top of the page.
+3. Put the downloaded raw `{yourLanguage}.json5` file into the `translation` folder of your JsonTools plugin directory, as discussed in [the documentation on translating JsonTools](#translating-jsontools-to-another-language).
 
 ## System Requirements ##
 
@@ -120,6 +134,47 @@ differ in that the first element of `root['a'][2]['b']` was changed from 3 to 4.
 
 I expect you could find plenty of other good websites if you did some research.
 
+## Translating JsonTools to another language ##
+
+If you are interested in helping users of JsonTools who don't speak English, JsonTools can be translated to other languages beginning in [v8.0](/CHANGELOG.md#800---2024-06-29).
+
+JsonTools infers your preferred language and attempts to translate in the following way:
+1. JsonTools checks your [Notepad++ `nativeLang.xml` config file](https://npp-user-manual.org/docs/binary-translation/#creating-or-editing-a-translation) (at [XPath path](https://www.w3schools.com/xml/xml_xpath.asp) `/NotepadPlus/Native-Langue/@name`) to determine what language you prefer to use, and sets `lowerEnglishName` to the appropriate value and __skips to step 3__. For example, if this file says `galician`, we will attempt to translate JsonTools to `galician`. __If the Notepad++ native language is `english` *or* if JsonTools does not have a translation file for the Notepad++ native language, JsonTools then does the following:__
+    1. JsonTools looks up your [`current culture`](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/get-culture?view=powershell-7.4) (which can be checked using the `get-culture` command in Powershell).
+    2. Next, we find the `EnglishName` property of the `current culture` (which can be found by the `$foo = get-culture; $foo.EnglishName` command in Powershell), take the first word, and convert it to lowercase. Call this `lowerEnglishName`.
+        - Example: the `EnglishName` of the `en-us` culture is `English (United States)`, so `lowerEnglishName` is `english`
+        - Example: the `EnglishName` of the `it-it` culture is `Italian (Italy)`, so `lowerEnglishName` is `italian`
+3. JsonTools then does one of the following:
+    - If `lowerEnglishName` is `english`, it does nothing (because JsonTools is naturally in English)
+    - Otherwise, it looks in the `translation` subdirectory of the `JsonTools` plugin folder (where `JsonTools.dll` lives) for a file named `{lowerEnglishName}.json5`
+    - __NOTE:__ because the translation files are in a subdirectory of the plugin folder, *translation does not work for versions of Notepad++ older than [version 8](https://notepad-plus-plus.org/downloads/v8/),* since those older versions do not have separate folders for each plugin.
+4. If JsonTools found `translation\{lowerEnglishName}.json5`, it attempts to parse the file. If parsing fails, a message box will appear warning the user of this.
+    - If no translation file was found, or if parsing failed, the default English will be used.
+5. If parsing was successful, JsonTools will use the translation file as described below.
+
+JsonTools only attempts to find translation files once, when Notepad++ is starting up. If you change the UI language of Notepad++ or your operating system's UI culture, you will have to close Notepad++ and reopen it before this change will apply to JsonTools.
+
+To be clear, *JsonTools may not be in the same language of the Notepad++ UI.* The steps described above represent my best effort to automatically translate JsonTools into a language that the user will find useful, without requiring the user to select their language from a list of available languages in the settings form.
+
+To translate JsonTools to another language, just look at [`english.json5` in the translations directory of this repo](https://github.com/molsonkiko/JsonToolsNppPlugin/blob/main/translation/english.json5) and follow the instructions in that file.
+
+Currently JsonTools has been translated into the following languages:
+| Language | First version with translation | Translator(s) | Translator is native speaker?  |
+|----------|--------------------------------|---------------|--------------------------------|
+| [Italian](https://github.com/molsonkiko/JsonToolsNppPlugin/blob/main/translation/italian.json5)  |   [v8.0](/CHANGELOG.md#800---2024-06-29) |  [conky77](https://github.com/conky77), [molsonkiko](https://github.com/molsonkiko) (only for `jsonLint` section)  | Only conky77 |
+
+
+The following aspects of JsonTools __can__ be translated:
+- Forms (including all controls and items in drop-down menus) (see the `forms` field of the translation `json5` file)
+- Items in the JsonTools sub-menu of the Notepad++ Plugins menu (see the `menuItems` field)
+- The descriptions of settings in the [`JsonTools.ini` config file](/docs/README.md#customizing-settings) (see the `settingsDescriptions` field)
+- The descriptions of settings in the [settings form](/docs/README.md#customizing-settings) (*only for versions since [v8.1](/CHANGELOG.md#810---unreleased-yyyy-mm-dd)*) (also controlled by `settingsDescriptions`)
+- [JSON syntax errors and JSON schema validation errors](/docs/README.md#error-form-and-status-bar) (*only for versions since [v8.1](/CHANGELOG.md#810---unreleased-yyyy-mm-dd)*) (see the `jsonLint` field)
+- Message boxes (includes warnings, errors, requests for confirmation) (*only for versions since [v8.1](/CHANGELOG.md#810---unreleased-yyyy-mm-dd)*) (see the `messageBoxes` field)
+
+The following aspects of JsonTools __may eventually__ be translated:
+- This documentation
+- Generic modal dialogs (for example, file-opening dialogs, directory selection dialogs)
 
 ## Acknowledgments ##
 

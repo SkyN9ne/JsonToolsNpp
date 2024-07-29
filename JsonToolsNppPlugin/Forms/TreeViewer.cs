@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -65,14 +66,24 @@ namespace JSON_Tools.Forms
         /// <summary>the most recently used quote character for s_csv in a RemesPath query</summary>
         public char csvQuote;
 
+        /// <summary>
+        /// whether to use dark mode type icons
+        /// </summary>
+        public bool isDarkMode = false;
+
         // event handlers for the node mouseclick drop down menu
+        private bool hasWarnedNo_path_separator = false;
         private static MouseEventHandler valToClipboardHandler = null;
+        private static MouseEventHandler pathToClipboardHandler = null;
         private static MouseEventHandler pathToClipboardHandler_Remespath = null;
         private static MouseEventHandler pathToClipboardHandler_Python = null;
         private static MouseEventHandler pathToClipboardHandler_Javascript = null;
+        private static MouseEventHandler pathToClipboardHandler_path_separator = null;
+        private static MouseEventHandler keyToClipboardHandler = null;
         private static MouseEventHandler keyToClipboardHandler_Remespath = null;
         private static MouseEventHandler keyToClipboardHandler_Python = null;
         private static MouseEventHandler keyToClipboardHandler_Javascript = null;
+        private static MouseEventHandler keyToClipboardHandler_path_separator = null;
         private static MouseEventHandler ToggleSubtreesHandler = null;
         private static MouseEventHandler selectThisHandler = null;
         private static MouseEventHandler showSortFormHandler = null;
@@ -96,6 +107,30 @@ namespace JSON_Tools.Forms
             SetDocumentTypeComboBoxIndex(GetDocumentType());
             documentTypeIndexChangeWasAutomatic = false;
             FormStyle.ApplyStyle(this, Main.settings.use_npp_styling);
+            ChangeTreeViewFont();
+        }
+
+        /// <summary>
+        /// Sets the font size of the tree view, and redraws it if the font size changed.
+        /// </summary>
+        /// <param name="newFontSize">defaults to <see cref="Settings.tree_view_font_size"/></param>
+        public void ChangeTreeViewFont(float newFontSize = -1)
+        {
+            if (newFontSize <= 0)
+                newFontSize = Main.settings.tree_view_font_size;
+            if (Tree.Font.SizeInPoints != newFontSize)
+            {
+                Tree.Font = new Font(
+                    Tree.Font.FontFamily,
+                    newFontSize,
+                    Tree.Font.Style,
+                    Tree.Font.Unit,
+                    Tree.Font.GdiCharSet,
+                    Tree.Font.GdiVerticalFont
+                );
+                if (Visible)
+                    Tree.Refresh();
+            }
         }
 
         public bool UsesSelections()
@@ -186,20 +221,23 @@ namespace JSON_Tools.Forms
             // TODO: maybe add some way to highlight unclosed braces?
         }
 
-        public static void SetImageOfTreeNode(TreeNode root, JNode json)
+        public static void SetImageOfTreeNode(TreeNode root, JNode json, bool isDarkMode)
         {
+            int imageIndex = isDarkMode ? 8 : 0;
             switch (json.type)
             {
-                case Dtype.ARR: root.ImageIndex = 0; root.SelectedImageIndex = 0; break;
-                case Dtype.BOOL: root.ImageIndex = 1; root.SelectedImageIndex = 1; break;
-                case Dtype.DATE:
-                case Dtype.DATETIME: root.ImageIndex = 2; root.SelectedImageIndex = 2; break;
-                case Dtype.FLOAT: root.ImageIndex = 3; root.SelectedImageIndex = 3; break;
-                case Dtype.INT: root.ImageIndex = 4; root.SelectedImageIndex = 4; break;
-                case Dtype.OBJ: root.ImageIndex = 5; root.SelectedImageIndex = 5; break;
-                case Dtype.STR: root.ImageIndex = 6; root.SelectedImageIndex = 6; break;
-                default: root.ImageIndex = 7; root.SelectedImageIndex = 7; break;
+                case Dtype.ARR:      imageIndex += 0; break;
+                case Dtype.BOOL:     imageIndex += 1; break;
+                //case Dtype.DATE:
+                //case Dtype.DATETIME: imageIndex += 2; break;
+                case Dtype.FLOAT:    imageIndex += 3; break;
+                case Dtype.INT:      imageIndex += 4; break;
+                case Dtype.OBJ:      imageIndex += 5; break;
+                case Dtype.STR:      imageIndex += 6; break;
+                default:             imageIndex = 7; break; // null type icon is same for light and dark mode
             }
+            root.ImageIndex = imageIndex;
+            root.SelectedImageIndex = imageIndex;
         }
 
         public void JsonTreePopulate(JNode json, TreeView tree = null)
@@ -207,7 +245,7 @@ namespace JSON_Tools.Forms
             if (tree == null) tree = this.Tree;
             if (json == null)
             {
-                MessageBox.Show("Cannot populate the JSON tree because no JSON is stored.",
+                Translator.ShowTranslatedMessageBox("Cannot populate the JSON tree because no JSON is stored.",
                     "Can't populate JSON tree",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Exclamation);
@@ -231,7 +269,7 @@ namespace JSON_Tools.Forms
             pathsToJNodes.Clear();
             TreeNode root = new TreeNode();
             if (Main.settings.tree_node_images)
-                SetImageOfTreeNode(root, json);
+                SetImageOfTreeNode(root, json, isDarkMode);
             if (json is JArray arr)
             {
                 root.Text = TextForTreeNode("JSON", json);
@@ -261,6 +299,29 @@ namespace JSON_Tools.Forms
             pathsToJNodes[root.FullPath] = json;
         }
 
+        public void ToggleIconDarkMode(bool newIsDarkMode)
+        {
+            if (newIsDarkMode == isDarkMode)
+                return;
+            Tree.BeginUpdate();
+            isDarkMode = newIsDarkMode;
+            if (Tree.Nodes.Count > 0)
+                ToggleIconDarkModeHelper(Tree.Nodes[0], isDarkMode);
+            Tree.EndUpdate();
+        }
+
+        private static void ToggleIconDarkModeHelper(TreeNode node, bool isDarkMode)
+        {
+            if (node.ImageIndex != 7) // null type icon is same for dark and light mode
+            {
+                int imageIndexChange = isDarkMode ? +8 : -8;
+                node.ImageIndex += imageIndexChange;
+                node.SelectedImageIndex += imageIndexChange;
+            }
+            foreach (TreeNode child in node.Nodes)
+                ToggleIconDarkModeHelper(child, isDarkMode);
+        }
+
         public static int IntervalBetweenJNodesWithTreeNodes(JNode json)
         {
             int interval = 0;
@@ -285,7 +346,8 @@ namespace JSON_Tools.Forms
                                                                   TreeNode root,
                                                                   JNode json,
                                                                   Dictionary<string, JNode> pathsToJNodes,
-                                                                  bool usesSelections)
+                                                                  bool usesSelections,
+                                                                  bool isDarkMode)
         {
             tree.BeginUpdate();
             try
@@ -305,7 +367,7 @@ namespace JSON_Tools.Forms
                             childNode.Nodes.Add("");
                         }
                         if (Main.settings.tree_node_images)
-                            SetImageOfTreeNode(childNode, child);
+                            SetImageOfTreeNode(childNode, child, isDarkMode);
                         pathsToJNodes[childNode.FullPath] = child;
                     }
                 }
@@ -326,18 +388,19 @@ namespace JSON_Tools.Forms
                             childNode.Nodes.Add("");
                         }
                         if (Main.settings.tree_node_images)
-                            SetImageOfTreeNode(childNode, child);
+                            SetImageOfTreeNode(childNode, child, isDarkMode);
                         pathsToJNodes[childNode.FullPath] = child;
                     }
                 }
             }
             catch (Exception ex)
             {
-                string expretty = RemesParser.PrettifyException(ex);
-                MessageBox.Show($"Could not populate JSON tree because of error:\n{expretty}",
-                                "Error while populating tree",
-                                MessageBoxButtons.OK,
-                                MessageBoxIcon.Error);
+                Translator.ShowTranslatedMessageBox(
+                    "Could not populate JSON tree because of error:\r\n{0}",
+                    "Error while populating tree",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error,
+                    1, RemesParser.PrettifyException(ex));
             }
             tree.EndUpdate();
         }
@@ -402,10 +465,12 @@ namespace JSON_Tools.Forms
             catch (Exception ex)
             {
                 string expretty = RemesParser.PrettifyException(ex);
-                MessageBox.Show($"Could not execute query {query} because of compilation error:\n{expretty}",
-                                "Compilation error in RemesPath query",
-                                MessageBoxButtons.OK,
-                                MessageBoxIcon.Error);
+                Translator.ShowTranslatedMessageBox(
+                    "Could not execute query {0} because of compilation error:\r\n{1}",
+                    "Compilation error in RemesPath query",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error,
+                    2, query, expretty);
                 return;
             }
             int runtimeErrorMessagesShown = 0;
@@ -414,7 +479,7 @@ namespace JSON_Tools.Forms
             {
                 if (!suppressRuntimeErrorMsg
                     && ++runtimeErrorMessagesShown % 5 == 0
-                    && MessageBox.Show("Select Yes to stop seeing error message boxes for this query",
+                    && Translator.ShowTranslatedMessageBox("Select Yes to stop seeing error message boxes for this query",
                         "Stop seeing errors?",
                         MessageBoxButtons.YesNo, MessageBoxIcon.Question
                        ) == DialogResult.Yes)
@@ -422,19 +487,26 @@ namespace JSON_Tools.Forms
                 if (suppressRuntimeErrorMsg)
                     return;
                 string expretty = RemesParser.PrettifyException(ex);
-                string errorMessage;
                 if (selectionStartEnd != null && SelectionManager.IsStartEnd(selectionStartEnd))
                 {
                     int[] startEnd = SelectionManager.ParseStartEnd(selectionStartEnd);
                     int start = startEnd[0]; int end = startEnd[1];
-                    errorMessage = $"While executing query {query} on selection between positions {start} and {end}, encountered runtime error:\n{expretty}";
+                    Translator.ShowTranslatedMessageBox(
+                        "While executing query {0} on selection between positions {1} and {2}, encountered runtime error:\r\n{3}",
+                        "Runtime error while executing query on selection",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error,
+                        4, query, start, end, expretty
+                    );
                 }
                 else
-                    errorMessage = $"While executing query {query}, encountered runtime error:\n{expretty}";
-                MessageBox.Show(errorMessage,
-                                "Runtime error while executing query",
-                                MessageBoxButtons.OK,
-                                MessageBoxIcon.Error);
+                {
+                    Translator.ShowTranslatedMessageBox(
+                        "While executing query {0}, encountered runtime error:\r\n{1}",
+                        "Runtime error while executing query",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error,
+                        2, query, expretty);
+                }
             };
             // if the query mutates input, we need to overwrite the file with the
             // modified JSON after the query has been executed
@@ -494,10 +566,12 @@ namespace JSON_Tools.Forms
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show($"Could not mutate ini file because of error while trying to stringify all values:\n{ex}",
-                                "Error while stringifying ini file values after RemesPath mutation",
-                                MessageBoxButtons.OK,
-                                MessageBoxIcon.Error);
+                        Translator.ShowTranslatedMessageBox(
+                            "Could not mutate ini file because of error while trying to stringify all values:\r\n{0}",
+                            "Error while formatting ini file values as strings after RemesPath mutation",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error,
+                            1, ex);
                         return;
                     }
                 }
@@ -681,7 +755,7 @@ namespace JSON_Tools.Forms
             {
                 nodes.RemoveAt(0);
                 JNode jnode = pathsToJNodes[node.FullPath];
-                JsonTreePopulateHelper_DirectChildren(tree, node, jnode, pathsToJNodes, UsesSelections());
+                JsonTreePopulateHelper_DirectChildren(tree, node, jnode, pathsToJNodes, UsesSelections(), isDarkMode);
             }
         }
 
@@ -700,7 +774,8 @@ namespace JSON_Tools.Forms
                                                            TreeNode root,
                                                            JNode json,
                                                            Dictionary<string, JNode> pathsToJNodes,
-                                                           bool usesSelections)
+                                                           bool usesSelections,
+                                                           bool isDarkMode)
         {
             int interval = IntervalBetweenJNodesWithTreeNodes(json);
             if (HasSentinelChild(root))
@@ -718,7 +793,7 @@ namespace JSON_Tools.Forms
                             JNode child = jar[ii];
                             TreeNode childNode = root.Nodes.Add(TextForTreeNode(ii.ToString(), child));
                             if (Main.settings.tree_node_images)
-                                SetImageOfTreeNode(childNode, child);
+                                SetImageOfTreeNode(childNode, child, isDarkMode);
                             pathsToJNodes[childNode.FullPath] = child;
                         }
                     }
@@ -734,18 +809,19 @@ namespace JSON_Tools.Forms
                             JNode child = jobj[key];
                             TreeNode childNode = root.Nodes.Add(key, TextForTreeNode(key, child));
                             if (Main.settings.tree_node_images)
-                                SetImageOfTreeNode(childNode, child);
+                                SetImageOfTreeNode(childNode, child, isDarkMode);
                             pathsToJNodes[childNode.FullPath] = child;
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    string expretty = RemesParser.PrettifyException(ex);
-                    MessageBox.Show($"Could not populate JSON tree because of error:\n{expretty}",
-                                    "Error while populating tree",
-                                    MessageBoxButtons.OK,
-                                    MessageBoxIcon.Error);
+                    Translator.ShowTranslatedMessageBox(
+                        "Could not populate JSON tree because of error:\r\n{0}",
+                        "Error while populating tree",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error,
+                        1, RemesParser.PrettifyException(ex));
                 }
             }
             // now this node has its direct children populated, so continue the recursion
@@ -759,7 +835,7 @@ namespace JSON_Tools.Forms
                     if ((child is JArray childarr && childarr.Length > 0)
                         || (child is JObject childobj && childobj.Length > 0))
                     {
-                        JsonTreePopulate_FullRecursive(tree, childNode, child, pathsToJNodes, false);
+                        JsonTreePopulate_FullRecursive(tree, childNode, child, pathsToJNodes, false, isDarkMode);
                     }
                 }
             }
@@ -774,7 +850,7 @@ namespace JSON_Tools.Forms
                     if ((child is JArray childarr && childarr.Length > 0)
                         || (child is JObject childobj && childobj.Length > 0))
                     {
-                        JsonTreePopulate_FullRecursive(tree, childNode, child, pathsToJNodes, false);
+                        JsonTreePopulate_FullRecursive(tree, childNode, child, pathsToJNodes, false, isDarkMode);
                     }
                 }
             }
@@ -866,6 +942,32 @@ namespace JSON_Tools.Forms
                     }
                 );
                 keyToClipboard_RemesPath.MouseUp += keyToClipboardHandler_Remespath;
+                var keyToClipboard_path_separator = keyToClipboard.DropDownItems[3];
+                keyToClipboard_path_separator.Text = $"Use path_separator setting ({Main.settings.path_separator})";
+                if (keyToClipboardHandler_path_separator != null)
+                {
+                    try
+                    {
+                        keyToClipboard_path_separator.MouseUp -= keyToClipboardHandler_path_separator;
+                    }
+                    catch { }
+                }
+                keyToClipboardHandler_path_separator = new MouseEventHandler(
+                    (s2, e2) =>
+                    {
+                        if (Main.pathSeparator == JNode.DEFAULT_PATH_SEPARATOR && !hasWarnedNo_path_separator)
+                        {
+                            Translator.ShowTranslatedMessageBox(
+                                "You chose \"Key/index to clipboard\" with the \"Use path_separator setting\" option, but your path_separator is still the default {0}. The {1} style is being used instead.",
+                                "path_separator setting not configured",
+                                MessageBoxButtons.OK, MessageBoxIcon.Warning,
+                                2, Main.settings.path_separator, Main.settings.key_style);
+                            hasWarnedNo_path_separator = true;
+                        }
+                        Npp.TryCopyToClipboard(KeyOfTreeNode(node, Main.settings.key_style, Main.pathSeparator));
+                    }
+                );
+                keyToClipboard_path_separator.MouseUp += keyToClipboardHandler_path_separator;
                 // drop down menu for getting path to clipboard
                 var pathToClipboard = (ToolStripMenuItem)NodeRightClickMenu.Items[2];
                 var pathToClipboard_Javascript = pathToClipboard.DropDownItems[0];
@@ -916,12 +1018,62 @@ namespace JSON_Tools.Forms
                     }
                 );
                 pathToClipboard_RemesPath.MouseUp += pathToClipboardHandler_Remespath;
-                switch (Main.settings.key_style)
+                var pathToClipboard_path_separator = pathToClipboard.DropDownItems[3];
+                pathToClipboard_path_separator.Text = $"Use path_separator setting ({Main.settings.path_separator})";
+                if (pathToClipboardHandler_path_separator != null)
                 {
-                    case (KeyStyle.RemesPath): pathToClipboard.MouseUp += pathToClipboardHandler_Remespath; break;
-                    case (KeyStyle.Python): pathToClipboard.MouseUp += pathToClipboardHandler_Python; break;
-                    case (KeyStyle.JavaScript): pathToClipboard.MouseUp += pathToClipboardHandler_Javascript; break;
+                    try
+                    {
+                        pathToClipboard_path_separator.MouseUp -= pathToClipboardHandler_path_separator;
+                    }
+                    catch { }
                 }
+                pathToClipboardHandler_path_separator = new MouseEventHandler(
+                    (s2, e2) =>
+                    {
+                        if (Main.pathSeparator == JNode.DEFAULT_PATH_SEPARATOR && !hasWarnedNo_path_separator)
+                        {
+                            Translator.ShowTranslatedMessageBox(
+                                "You chose \"Key/index to clipboard\" with the \"Use path_separator setting\" option, but your path_separator is still the default {0}. The {1} style is being used instead.",
+                                "path_separator setting not configured",
+                                MessageBoxButtons.OK, MessageBoxIcon.Warning,
+                                2, Main.settings.path_separator, Main.settings.key_style);
+                            hasWarnedNo_path_separator = true;
+                        }
+                        Npp.TryCopyToClipboard(PathToTreeNode(node, Main.settings.key_style, Main.pathSeparator));
+                    }
+                );
+                pathToClipboard_path_separator.MouseUp += pathToClipboardHandler_path_separator;
+                // shortcut to whatever the current settings say if user clicks on the parent item
+                if (pathToClipboardHandler != null)
+                    pathToClipboard.MouseUp -= pathToClipboardHandler;
+                if (keyToClipboardHandler != null)
+                    keyToClipboard.MouseUp -= keyToClipboardHandler;
+                if (Main.pathSeparator == JNode.DEFAULT_PATH_SEPARATOR)
+                {
+                    switch (Main.settings.key_style)
+                    {
+                    case KeyStyle.RemesPath:
+                        pathToClipboardHandler = pathToClipboardHandler_Remespath;
+                        keyToClipboardHandler = keyToClipboardHandler_Remespath;
+                        break;
+                    case KeyStyle.Python:
+                        pathToClipboardHandler = pathToClipboardHandler_Python;
+                        keyToClipboardHandler = keyToClipboardHandler_Python;
+                        break;
+                    case KeyStyle.JavaScript:
+                        pathToClipboardHandler = pathToClipboardHandler_Javascript;
+                        keyToClipboardHandler = keyToClipboardHandler_Javascript;
+                        break;
+                    }
+                }
+                else
+                {
+                    pathToClipboardHandler = pathToClipboardHandler_path_separator;
+                    keyToClipboardHandler = keyToClipboardHandler_path_separator;
+                }
+                pathToClipboard.MouseUp += pathToClipboardHandler;
+                keyToClipboard.MouseUp += keyToClipboardHandler;
                 NodeRightClickMenu.Items[3].MouseUp -= ToggleSubtreesHandler;
                 JNode nodeJson = pathsToJNodes[node.FullPath];
                 ToggleSubtreesHandler = new MouseEventHandler(
@@ -936,7 +1088,7 @@ namespace JSON_Tools.Forms
                                 // node.ExpandAll() is VERY VERY SLOW if we don't do it this way
                                 Tree.BeginUpdate();
                                 isExpandingAllSubtrees = true;
-                                JsonTreePopulate_FullRecursive(Tree, node, nodeJson, pathsToJNodes, UsesSelections());
+                                JsonTreePopulate_FullRecursive(Tree, node, nodeJson, pathsToJNodes, UsesSelections(), isDarkMode);
                                 node.ExpandAll();
                                 isExpandingAllSubtrees = false;
                                 Tree.EndUpdate();
@@ -998,7 +1150,7 @@ namespace JSON_Tools.Forms
         /// </summary>
         /// <param name="style"></param>
         /// <returns></returns>
-        public string PathToTreeNode(TreeNode node, KeyStyle style = KeyStyle.Python, List<string> path = null)
+        public string PathToTreeNode(TreeNode node, KeyStyle style = KeyStyle.Python, char separator =  JNode.DEFAULT_PATH_SEPARATOR, List<string> path = null)
         {
             if (path == null)
                 path = new List<string>();
@@ -1009,17 +1161,14 @@ namespace JSON_Tools.Forms
                 path.Reverse(); // cuz they were added from the node to the root
                 return string.Join("", path);
             }
-            path.Add(KeyOfTreeNode(node, style));
-            return PathToTreeNode(node.Parent, style, path);
+            path.Add(KeyOfTreeNode(node, style, separator));
+            return PathToTreeNode(node.Parent, style, separator, path);
         }
 
         /// <summary>
-        /// See JNode.FormatKey, but uses the key of a TreeNode
+        /// See <see cref="JNode.FormatKey(string, KeyStyle, char)"/>, but uses the key of a TreeNode as the first argument, and separator as the third argument.
         /// </summary>
-        /// <param name="node"></param>
-        /// <param name="style"></param>
-        /// <returns></returns>
-        public string KeyOfTreeNode(TreeNode node, KeyStyle style)
+        public string KeyOfTreeNode(TreeNode node, KeyStyle style, char separator = JNode.DEFAULT_PATH_SEPARATOR)
         {
             if (node.Name == "" // TreeNodes representing array members have no name
                 // but we need to be careful because an object could have the empty string as a key
@@ -1030,9 +1179,21 @@ namespace JSON_Tools.Forms
                 // one treenode for every i^th JNode in the JArray. 
                 string[] parts = node.Text.Split(' ', ':');
                 int idx = int.Parse(parts[0]);
-                return $"[{idx}]";
+                return JNode.FormatIndex(idx, separator);
             }
-            return JNode.FormatKey(node.Name, style);
+            try
+            {
+                return JNode.FormatKey(node.Name, style, separator);
+            }
+            catch (Exception ex)
+            {
+                Translator.ShowTranslatedMessageBox(
+                    "While attempting to format key {0} using style, the following error occurred:\r\n{1}",
+                    "Error while formatting key of tree node",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error,
+                    2, node.Name, ex);
+                return "";
+            }
         }
 
         /// <summary>
@@ -1055,7 +1216,7 @@ namespace JSON_Tools.Forms
                 JNode jnode = nodes[ii];
                 if (jnode is JArray || jnode is JObject)
                 {
-                    MessageBox.Show("Cannot select an object or an array in a non-JSON document, as it does not correspond to a specific text region",
+                    Translator.ShowTranslatedMessageBox("Cannot select an object or an array in a non-JSON document, as it does not correspond to a specific text region",
                         "Can't select object or array in non-JSON",
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return false;
@@ -1130,8 +1291,10 @@ namespace JSON_Tools.Forms
                     nodeEndPos = Main.EndOfJNodeAtPos(nodeStartPos, selectionEnd < 0 ? Npp.editor.GetLength() : selectionEnd);
             }
             if (!isRegex && nodeStartPos == nodeEndPos) // empty selections are fine in regex mode
-                MessageBox.Show("The selected tree node does not appear to correspond to a JSON element in the document.",
-                    "Couldn't select associated JSON", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Translator.ShowTranslatedMessageBox(
+                    "The selected tree node does not appear to correspond to a JSON element in the document.",
+                    "Couldn't select associated JSON",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
             else
             {
                 Npp.editor.ClearSelections();
@@ -1150,7 +1313,7 @@ namespace JSON_Tools.Forms
                 return;
             }
             if (!pathsToJNodes.TryGetValue(node.FullPath, out JNode jnode))
-                MessageBox.Show("The selected tree node does not appear to correspond to a JSON element in the document.",
+                Translator.ShowTranslatedMessageBox("The selected tree node does not appear to correspond to a JSON element in the document.",
                     "Couldn't select children of JSON", MessageBoxButtons.OK, MessageBoxIcon.Error);
             (int selectionStartPos, int selectionEndPos) = ParentSelectionStartEnd(node);
             if (info.documentType == DocumentType.REGEX)
@@ -1184,8 +1347,8 @@ namespace JSON_Tools.Forms
                 positions = obj.children.Values.Select(x => selectionStartPos + x.position);
             else
             {
-                MessageBox.Show("The selected JSON is not an object or array, and thus has no children.",
-                    "Couldn't select children of JSON", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Translator.ShowTranslatedMessageBox("The selected JSON is not an object or array, and thus has no children.",
+                    "Can only select children of object or array", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
             Main.SelectAllChildren(positions, info.documentType == DocumentType.JSONL);
