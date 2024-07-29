@@ -1,0 +1,468 @@
+// If you want to translate JsonTools into another language, follow these steps (in the example below, we are translating into the "fooish" language):
+// 1. Create a copy of this file at the path "translation/fooish.json5" relative to the JsonTools plugin directory (the directory where the JsonTools.dll binary is installed, *not* the plugin config directory).
+// 2. If you are not 100% certain you understand all the rules of JSON syntax, read https://www.json.org/json-en.html
+// 3. Edit the values associated with the various keys in this document. Here are some rules that you must follow.
+//     i. DO NOT CHANGE THE KEYS OF ANY OBJECT, OR ADD OR REMOVE KEYS! ONLY CHANGE THE VALUES.
+//     ii. Some of these values will have "{integer}" in their text,
+//         like the "{0}" and "{1}" in "Found '{0}' after key {1} when colon expected".
+//         When you see "{1}" in a value, this means "insert the 2nd piece of extra information required to render this message".
+//         When translating these values, it is VERY IMPORTANT that your translation includes all the "{integer}" occurrences.
+//         EXAMPLES OF TRANSLATING "Found '{0}' after key {1} when colon expected" TO ITALIAN:
+//         GOOD: "Trovato '{0}' dopo la chiave {1} quando erano previsti i due punti"
+//         BAD (missing "{0}"): "Trovato '' dopo la chiave {1} quando erano previsti i due punti"
+//         BAD (missing "{1}"): "Trovato '{0}' dopo la chiave {} quando erano previsti i due punti"
+//         BAD (has "{0.}" instead of "{0}"): "Trovato '{0.}' dopo la chiave {1} quando erano previsti i due punti"
+//     iii. The following words are keywords and MUST BE PRESERVED EXACTLY (including case).
+//         - null
+//         - true
+//         - false
+//         - NaN
+//         - Infinity
+//         - None
+//         - True
+//         - False
+//         - nan
+//         - inf
+//         - undefined
+//     iv. The ', ", and ` characters have specific meanings, and CANNOT BE USED INTERCHANGABLY.
+//         If you see 'x' in one place, `x` in another place, and "x" in a third place, assume that this was an intentional choice by molsonkiko, and leave it unchanged.
+//     v. If you see a word surrounded in \" or ' or ` inside a value, it is a keyword, so don't change it.
+// 4a. Go to the settings and change the `logger_level` setting to JSON5.
+// 4b. Use the "Check JSON syntax now" command to make sure that this document has no syntax errors with a severity of BAD or FATAL.
+// 5. Close Notepad++ and reopen it, then look at the various JsonTools forms and menu items to see if the translation is satisfactory.
+{
+    "forms": {
+        "AboutForm": {
+            // this is the name that appears in the title bar for this form
+            "title": "About JsonTools",
+            // Each key in this object is the name of the control in the JsonTools codebase.
+            //     If a control name is missing, that control is not translated.
+            "controls": {
+                // If the value associated with a control name is a string,
+                //     that controls the text of the control.
+                "Description": "Query/editing tool for JSON including linting, reformatting, \r\na tree viewer with file navigation,\r\na JMESpath-like query language, and much more",
+                "GitHubLink": {
+                    // This is a LinkLabel, meaning it has a clickable link (the JsonTools repo URL).
+                    "text": "[{\"need\": \"help?\"}, \"ask me at\",\r\n\"https://github.com/molsonkiko/JsonToolsNppPlugin\"]",
+                    // If you change the text of this LinkLabel,
+                    //      make sure that you change the linkStart property
+                    //      so that only the URL is in the highlighted region.
+                    "linkStart": 34,
+                    "linkLength": 50
+                },
+                "DebugInfoLabel": "Notepad++ version: X.Y.Z. For more info about your\r\ninstallation, go to ? -> Debug Info on the main status bar.",
+                "ThanksWowLinkLabel": {
+                    "text": "Special thanks to:\r\n* Don Ho for making Notepad++\r\n* kbilsted for making the plugin pack this is based on\r\n* And of course everyone who helped make this plugin\r\n   better!\r\n* The amazing community makes this work worthwhile.\r\n  Wow!",
+                    "linkStart": 228,
+                    "linkLength": 4
+                }
+            }
+        },
+        "ErrorForm": {
+            // This form has no translatable controls, so only the title is here.
+            "title": "Syntax errors in JSON"
+        },
+        "FindReplaceForm": {
+            "title": "Find/replace in JSON",
+            "controls": {
+                "FindReplaceFormTitle": "Find/replace in JSON",
+                "FindTextBoxLabel": "Find...",
+                "SwapFindReplaceButton": "Swap",
+                "ReplaceTextBoxLabel": "Replace with...",
+                "RootTextBoxLabel": "Root",
+                // This control is a checkbox with text that changes
+                //     depending on whether it is checked or unchecked.
+                "ShowAdvancedOptionsCheckBox": {
+                    // Change this value to set the text when the box is *checked*
+                    "checked": "Show advanced options",
+                    // Change this value to set the text when the box is *unchecked*
+                    "unchecked": "Hide advanced options"
+                },
+                // This is a ComboBox, where the text can be selected from a drop-down list.
+                // DO NOT CHANGE THE NUMBER OF ELEMENTS IN THIS ARRAY!
+                "KeysValsBothBox": [
+                    "Keys",
+                    "Values",
+                    "Keys and values"
+                ],
+                "KeysValsBothBoxLabel": "Search in keys or values?",
+                "RegexBox": "Use regular expressions?",
+                "MathBox": "Math expression",
+                "RecursiveSearchBox": "Recursive search?",
+                "IgnoreCaseCheckBox": "Ignore case?",
+                "MatchExactlyBox": "Match exactly?",
+                "FindButton": "Find all",
+                "ReplaceButton": "Replace all"
+            }
+        },
+        "GrepperForm": {
+            "title": "JSON from files and APIs",
+            "controls": {
+                "GrepperFormTitle": "JSON from files and APIs",
+                "GetJsonFromApisTitle": "Get JSON from APIs",
+                "UrlsBoxLabel": "Enter URLs of APIs you want to request JSON from (one per line or as JSON array)",
+                "SendRequestsButton": "Send API requests",
+                "GetJsonFromFilesTitle": "Get JSON from local files",
+                "RecursiveSearchCheckBox": "Search in subdirectories?",
+                "ChooseDirectoriesButton": "Choose directory...",
+                // This is another ComboBox. There may be more than one element in this list,
+                //    but only the first element can be translated in this case.
+                "DirectoriesVisitedBox": [
+                    "Previously visited directories..."
+                ],
+                "SearchDirectoriesButton": "Search directories",
+                "DocsButton": "Documentation",
+                "ViewErrorsButton": "View errors",
+                "ViewResultsButton": "View results in buffer",
+                "ChooseFilesTitle": "Choose files and URLs",
+                "RemoveSelectedFilesButton": "Remove selected files"
+            }
+        },
+        "GrepperFormProgressBar": {
+            "controls": {
+                "titleIfParsing": "JSON parsing in progress",
+                "titleIfReading": "File reading in progress",
+                "captionIfParsing": "File reading complete.\r\nNow parsing {0} documents with combined length of about {1} MB",
+                "captionIfReading": "Now reading {0} files with a combined length of about {1} MB",
+                "progressLabelIfParsing": "0 MB of {0} MB parsed",
+                "progressLabelIfReading": "0 of {0} files read"
+            }
+        },
+        "JsonToCsvForm": {
+            "title": "JSON to CSV",
+            "controls": {
+                "JsonToCsvFormTitle": "Create CSV from JSON",
+                "KeySepBoxLabel": "Key Separator",
+                "DelimBoxLabel": "Delimiter in output file",
+                "eolComboBoxLabel": "Line terminator in output box",
+                "BoolsToIntsCheckBox": "Convert true/false to 1/0?",
+                "StrategyBox": [
+                    "Default",
+                    "Full recursive",
+                    "No recursion",
+                    "Stringify iterables"
+                ],
+                "StrategyBoxLabel": "Strategy",
+                "GenerateCSVButton": "Generate CSV",
+                "DocsButton": "Docs"
+            }
+        },
+        "RegexSearchForm": {
+            "title": "Regex search to JSON",
+            "controls": {
+                "Title": "Regex Search to JSON",
+                "RegexTextBoxLabel": "Enter a regex",
+                "IgnoreCaseCheckBox": "Ignore case?",
+                "IncludeFullMatchAsFirstItemCheckBox": "Include full match as first item?",
+                "ParseAsCsvCheckBox": "Parse as CSV?",
+                "DelimiterTextBoxLabel": "Delimiter",
+                "QuoteCharTextBoxLabel": "Quote character",
+                "NewlineComboBoxLabel": "Newline",
+                "NColumnsTextBoxLabel": "Number of columns",
+                "HeaderHandlingComboBox": [
+                    "Skip header",
+                    "Include header",
+                    "Use header as keys"
+                ],
+                "HeaderHandlingComboBoxLabel": "Header handling",
+                "ColumnsToParseAsNumberTextBoxLabel": "Groups to parse as number (int array)",
+                "SearchButton": "Search"
+            }
+        },
+        "SettingsForm": {
+            "title": "Settings - JsonTools plug-in",
+            "controls": {
+                "Cancel": "&Cancel",
+                "Reset": "&Reset",
+                "Ok": "&Ok"
+            }
+        },
+        "SortForm": {
+            "title": "Sort JSON arrays",
+            "controls": {
+                "SortFormTitle": "Sort JSON array(s)",
+                "PathTextBoxLabel": "Path to array(s)",
+                "IsMultipleArraysCheckBox": "Path goes to multiple arrays; sort each subarray",
+                "ReverseOrderCheckBox": "Biggest to smallest?",
+                "SortMethodBox": [
+                    "Default",
+                    "As strings (ignoring case)",
+                    "By index/key of each child",
+                    "By query on each child",
+                    "Shuffle"
+                ],
+                "SortMethodBoxLabel": "Sort method",
+                "QueryKeyIndexTextBoxLabel": "Key/index/query",
+                "SortButton": "Sort"
+            }
+        },
+        "TreeViewer": {
+            "title": "Json Tree View for {0}",
+            // this is the title for the GrepperForm's tree view
+            "titleIfGrepperForm": "JSON from files and APIs tree",
+            "controls": {
+                "SubmitQueryButton": "Submit query",
+                "QueryToCsvButton": "Query to CSV",
+                "SaveQueryButton": "Save query result",
+                "RefreshButton": "Refresh",
+                "FindReplaceButton": "Find/replace"
+            }
+        }
+    },
+    // this controls the text of the main menu items
+    //      associated with the JsonTools item on the Notepad++ plugin menu.
+    "menuItems": {
+        // The "&D" in this text means that this menu item can be accessed by the "D"
+        //    accelerator key, meaning that the Alt-P-J-D key sequence can access this menu item.
+        // When translating menu items, it is good practice to include an accelerator key,
+        //     and it is *even better* if the accelerator key is the same as in the English translation.
+        // Thus, the Italian translation might be "&Documentazione".
+        //
+        // *VERY VERY IMPORTANT*: Every menu item name MUST have 63 characters or fewer when encoded in UTF-16.
+        //     The easiest way to check if any menu items are too long is to open the JsonTools treeview for this file,
+        //     and submit the query on the next line in the text box in the top-left corner:
+        //     @.menuItems[s_len(@) >= 64]
+        //     The query on the line above will select all menu items with 64 or more UTF-16 characters.
+        //
+        //     You *cannot* check the length by selecting it with Notepad++, because Notepad++ shows UTF-8 byte counts in the status bar.
+        "&Documentation": "&Documentation",
+        "&Pretty-print current JSON file": "&Pretty-print current JSON file",
+        "&Compress current JSON file": "&Compress current JSON file",
+        "Path to current &position": "Path to current &position",
+        "Select every val&id JSON in selection": "Select every val&id JSON in selection",
+        "Chec&k JSON syntax now": "Chec&k JSON syntax now",
+        "Open &JSON tree viewer": "Open &JSON tree viewer",
+        "&Get JSON from files and APIs": "&Get JSON from files and APIs",
+        "Sort arra&ys": "Sort arra&ys",
+        "&Settings": "&Settings",
+        "&Validate JSON against JSON schema": "&Validate JSON against JSON schema",
+        "Validate &files with JSON schema if name matches pattern": "Validate &files with JSON schema if name matches pattern",
+        "Generate sc&hema from JSON": "Generate sc&hema from JSON",
+        "Generate &random JSON from schema": "Generate &random JSON from schema",
+        "Run &tests": "Run &tests",
+        "A&bout": "A&bout",
+        "See most recent syntax &errors in this file": "See most recent syntax &errors in this file",
+        "JSON to YAML": "JSON to YAML",
+        "Parse JSON Li&nes document": "Parse JSON Li&nes document",
+        "&Array to JSON Lines": "&Array to JSON Lines",
+        "D&ump selected text as JSON string(s)": "D&ump selected text as JSON string(s)",
+        "Dump JSON string(s) as ra&w text": "Dump JSON string(s) as ra&w text",
+        "Open tree for &INI file": "Open tree for &INI file",
+        "Rege&x search to JSON": "Rege&x search to JSON"
+    },
+    // The JsonTools.ini config file (in your plugin config folder)
+    //     will have these translated descriptions as comments above each setting.
+    //     The settings form will also show these translated descriptions when the named setting is selected.
+    "settingsDescriptions": {
+        "logger_level": "Suppress logging of errors at or below this level.\r\nSTRICT: Log all deviations from the original JSON spec.\r\nOK: The original JSON spec plus the following:\r\n    * strings can contain characters with ASCII values less than 0x20 (includes '\\t')\r\nNAN_INF: Do not log errors when NaN, Infinity, and -Infinity are parsed.\r\nJSONC: The following errors are not logged:\r\n    * JavaScript single-line '//' and multi-line '/*...*/' comments\r\n    * NaN and +/-Infinity\r\nJSON5: Everything in the JSONC and NAN_INF levels is not logged, as well as the following:\r\n    * singlequoted strings\r\n    * commas after the last element of an array or object\r\n    * unquoted object keys\r\n    * see https://json5.org/ for more.",
+        "offer_to_show_lint": "When the document is parsed, show a prompt to see syntax errors in the document.",
+        "auto_validate": "Automatically validate .json, .jsonc, and .jsonl files every 2 seconds, except very large files",
+        "inactivity_seconds_before_parse": "How many seconds of user inactivity before the plugin re-parses the document. Minimum 1.",
+        "max_file_size_MB_slow_actions": "Files larger than this number of megabytes have the following slow actions DISABLED by default:\r\n* Automatically turning on the JSON lexer.\r\n* Automatic parsing of the file on opening and approximately 2 seconds after every edit.",
+        "max_json_length_full_tree": "The longest length of a JSON array or object that gets all its children added to the tree view. Longer iterables get only some of their children added to the tree.",
+        "tree_node_images": "Should each node in the tree have an image associated with its type?",
+        "ask_before_pretty_printing_json_lines": "Ask before pretty-printing JSON Lines documents, ignore requests to pretty-print, or pretty-print without asking?\r\nDONT_DO_DONT_ASK: Do nothing when you try to pretty-print JSON lines.\r\nASK_BEFORE_DOING: Create a message box to ask for confirmation when you try to do this.\r\nDO_WITHOUT_ASKING: Do this when asked without making a message box.",
+        "indent_pretty_print": "The number of spaces between levels of JSON when pretty-printing",
+        "tab_indent_pretty_print": "Use one horizontal tab ('\\t') instead of spaces between levels of JSON when pretty-printing",
+        // Do not translate the example object for PPrint style! Leave it in English.
+        // Only translate the following: "How JSON is pretty printed", "Google style (default)", "Whitesmith style", "PPrint style"
+        "pretty_print_style": "How JSON is pretty printed.\r\nGoogle style (default):\r\n{\r\n    \"a\": [\r\n        1,\r\n        [\r\n            2\r\n        ]\r\n    ]\r\n}\r\nWhitesmith style:\r\n{\r\n\"a\":\r\n    [\r\n    1,\r\n        [\r\n        2\r\n        ]\r\n    ]\r\n}\r\nPPrint style:\r\n{\r\n    \"algorithm\": [\r\n        [\"start\", \"each\", \"child\", \"on\", \"a\", \"new\", \"line\"],\r\n        [\"if\", \"the\", \"line\", \"would\", \"have\", \"length\", \"at\", \"least\", 80],\r\n        [\r\n            \"follow\",\r\n            \"this\",\r\n            \"algorithm\",\r\n            [\"starting\", \"from\", \"the\", \"beginning\"]\r\n        ],\r\n        [\"else\", \"print\", \"it\", \"out\", \"on\", 1, \"line\"]\r\n    ],\r\n    \"style\": \"PPrint\",\r\n    \"useful\": true\r\n}",
+        "minimal_whitespace_compression": "If true, using the 'Compress JSON' plugin command will remove ALL unnecessary whitespace from the JSON. Otherwise, it will leave after the colon in objects and after the comma in both objects and arrays",
+        "remember_comments": "When JSON is pretty-printed or compressed, any comments found when it was last parsed are included.\r\nWhen pretty-printing, each comment will have the same relative location to each JSON element as when it was parsed.\r\nWhen compressing, all comments will come at the beginning of the document.",
+        "sort_keys": "Sort the keys of objects alphabetically when pretty-printing or compressing",
+        "toolbar_icons": "Specify one of these chars for each toolbar icon you want to show, in the order you want:\r\n('t' = tree view, 'c' = compress, 'p' = pretty-print, 'o' = path to current position)\r\nThis setting will take effect the next time you start Notepad++.\r\nIf you want there to be NO toolbar icons, enter a character that does not represent an icon; do NOT leave this field empty.",
+        "auto_try_guess_csv_delim_newline": "If this setting is true,\r\nwhen the regex search form is opened, or when the \"Parse as CSV?\" checkbox in that form is toggled on,\r\nJsonTools will attempt to guess whether the current document is a CSV or TSV file, and how many columns and what newline it has.\r\nThe regex search form will take slightly longer to open if this is true.",
+        "csv_newline": "Which type of newline to use for generated CSV files.",
+        "key_style": "The style of key to use when getting the path or key/index of a node or line.\r\nSee the documentation (https://github.com/molsonkiko/JsonToolsNppPlugin/blob/main/docs/README.md#key_style-setting) for an explanation of each type.\r\nThis setting is IGNORED when path_separator is NOT the default \"\\u0001\".",
+        "path_separator": "The separator to use when formatting a path. This setting is IGNORED when it is set to \"\\u0001\" (the default).\r\nThis MUST have exactly one character, which CANNOT be any of the characters in the following JSON string: \"\\\"0123456789\"\r\nThe algorithm for formatting an object key or array index is as follows:\r\n===========\r\nif the key is an array index:\r\n    format it as plaintext (for example, index 10 becomes \"$10\" if \"$\" was the path_separator)\r\nif the key contains the path_separator:\r\n    format it as a JSON string (for example, key \"foo\" would be formatted as \"/foo\" if \"/\" was the path_separator)\r\nelse if the key starts with (_ or a-z or A-Z) and all its other characters are (_ or 0-9 or a-z or A-Z):\r\n    format it as plain text (for example, key \"_foo\" becomes \"/_foo\" if \"/\" was the path_separator, but \"_\\\"_foo\\\"\" if \"_\" was the path_separator)\r\nelse:\r\n    format it as a JSON string (for example, the key \"a b\" would be formatted as \"/\\\"a b\\\"\" if the path_separator was \"/\" even though it doesn't contain the path_separator)",
+        "skip_api_request_and_fuzz_tests": "When running tests, skip the tests that send requests to APIs and the RemesPath fuzz tests",
+        "try_parse_start_chars": "When selecting every JSON in the file, start trying to parse only at these characters.\r\nOnly JSON valid according to the NAN_INF logger_level is tolerated.\r\nExample: if \"[{ are chosen (default), we consider only potential strings, arrays, and objects.\r\nIf \"[{tf are chosen, we consider potential strings, arrays, objects, and booleans.",
+        "tree_view_font_size": "The font size (in points) for the tree viewer. For reference, the default value is 7.8.",
+        "use_npp_styling": "Use the same colors as the editor window for the tree viewer and other JsonTools forms?",
+        "extended_ascii_strings": "Use extended ASCII characters (e.g., \u000b, ñ) in strings?",
+        "maxArrayLength": "Maximum length of random arrays, unless otherwise specified by the \"maxItems\" keyword",
+        "minArrayLength": "Minimum length of random arrays, unless otherwise specified by the \"minItems\" keyword",
+        "max_schema_validation_problems": "Maximum number of JSON Schema validation problems to log before the validator stops"
+    },
+    // These are the error messages that JsonTools can report while parsing JSON and JSON Lines.
+    "jsonLint": {
+        // ============== OK messages ==============
+        "OK_CONTROL_CHAR": "Control characters (ASCII code less than 0x20) are disallowed inside strings under the strict JSON specification",
+        // ============== NAN_INF messages ==============
+        "NAN_INF_Infinity": "Infinity is not allowed in the original JSON specification",
+        "NAN_INF_NaN": "NaN is not allowed in the original JSON specification",
+        // ============== JSONC messages ==============
+        "JSONC_JAVASCRIPT_COMMENT": "JavaScript comments are not allowed in the original JSON specification",
+        // ============== JSON5 messages ==============
+        "JSON5_WHITESPACE_CHAR": "Whitespace characters other than ' ', '\\t', '\\r', and '\\n' are only allowed in JSON5",
+        "JSON5_SINGLEQUOTED_STRING": "Singlequoted strings are only allowed in JSON5",
+        "JSON5_ESCAPED_NEWLINE": "Escaped newline characters are only allowed in JSON5",
+        "JSON5_X_ESCAPE": "\\x escapes are only allowed in JSON5",
+        "JSON5_ESCAPED_CHAR": "Escaped char '{0}' is only allowed in JSON5",
+        "JSON5_UNQUOTED_KEY": "Unquoted keys are only allowed in JSON5",
+        "JSON5_NUM_LEADING_PLUS": "Leading + signs in numbers are only allowed in JSON5",
+        "JSON5_HEX_NUM": "Hexadecimal numbers are only allowed in JSON5",
+        "JSON5_NUM_LEADING_DECIMAL_POINT": "Numbers with a leading decimal point are only allowed in JSON5",
+        "JSON5_COMMA_AFTER_LAST_ELEMENT_ARRAY": "Comma after last element of array",
+        "JSON5_COMMA_AFTER_LAST_ELEMENT_OBJECT": "Comma after last key-value pair of object",
+        "JSON5_NUM_TRAILING_DECIMAL_POINT": "Numbers with a trailing decimal point are only allowed in JSON5",
+        // ============== BAD messages ==============
+        "BAD_UNTERMINATED_MULTILINE_COMMENT": "Unterminated multi-line comment",
+        "BAD_PYTHON_COMMENT": "Python-style '#' comments are not allowed in any well-accepted JSON specification",
+        "BAD_STRING_CONTAINS_NEWLINE": "String literal contains newline",
+        "BAD_KEY_CONTAINS_NEWLINE": "Object key contains newline",
+        "BAD_UNTERMINATED_STRING": "Unterminated string literal starting at position {0}",
+        "BAD_INVALID_UNQUOTED_KEY": "No valid unquoted key beginning at {0}",
+        "BAD_PYTHON_nan": "nan is not a valid representation of Not a Number in JSON",
+        "BAD_PYTHON_None": "None is not allowed in any JSON specification",
+        "BAD_PYTHON_inf": "inf is not the correct representation of Infinity in JSON",
+        "BAD_UNNECESSARY_LEADING_0": "Numbers with an unnecessary leading 0 (like \"01\") are not allowed in any JSON specification",
+        "BAD_SLASH_FRACTION": "Fractions of the form 1/3 are not allowed in any JSON specification",
+        "BAD_NUMBER_INVALID_FORMAT": "Number string {0} had bad format",
+        "BAD_TWO_CONSECUTIVE_COMMAS_ARRAY": "Two consecutive commas after element {0} of array",
+        "BAD_COMMA_BEFORE_FIRST_ELEMENT_ARRAY": "Comma before first value in array",
+        "BAD_ARRAY_ENDSWITH_CURLYBRACE": "Expected ']' at the end of an array, but found '}'",
+        "BAD_NO_COMMA_BETWEEN_ARRAY_ITEMS": "No comma between array members",
+        "BAD_COLON_BETWEEN_ARRAY_ITEMS": "':' (key-value separator) where ',' between array members expected. Maybe you forgot to close the array?",
+        "BAD_UNTERMINATED_ARRAY": "Unterminated array",
+        "BAD_TWO_CONSECUTIVE_COMMAS_OBJECT": "Two consecutive commas after key-value pair {0} of object",
+        "BAD_COMMA_BEFORE_FIRST_PAIR_OBJECT": "Comma before first value in object",
+        "BAD_NO_COMMA_BETWEEN_OBJECT_PAIRS": "No comma after key-value pair {0} in object",
+        "BAD_UNTERMINATED_OBJECT": "Unterminated object",
+        "BAD_OBJECT_ENDSWITH_SQUAREBRACE": "Expected '}' at the end of an object, but found ']'",
+        "BAD_COLON_BETWEEN_OBJECT_PAIRS": "':' found instead of comma after key-value pair",
+        "BAD_CHAR_WHERE_COLON_EXPECTED": "Found '{0}' after key {1} when colon expected",
+        "BAD_NO_COLON_BETWEEN_OBJECT_KEY_VALUE": "No ':' between key {0} and value {0} of object",
+        "BAD_DUPLICATE_KEY": "Object has multiple of key \"{0}\"",
+        "BAD_PYTHON_True": "True is not allowed in any JSON specification",
+        "BAD_PYTHON_False": "False is not allowed in any JSON specification",
+        "BAD_JAVASCRIPT_undefined": "undefined is not allowed in any JSON specification",
+        "BAD_CHAR_INSTEAD_OF_EOF": "At end of valid JSON document, got {0} instead of EOF",
+        // ============== FATAL messages ==============
+        "FATAL_EXPECTED_JAVASCRIPT_COMMENT": "Expected JavaScript comment after '/'",
+        "FATAL_HEXADECIMAL_TOO_SHORT": "Could not find valid hexadecimal of length {0}",
+        "FATAL_NUL_CHAR": "'\\x00' is the null character, which is illegal in JsonTools",
+        "FATAL_UNTERMINATED_KEY": "Unterminated object key",
+        "FATAL_INVALID_STARTSWITH_n": "Expected literal starting with 'n' to be null or nan",
+        "FATAL_PLUS_OR_MINUS_AT_EOF": "'{0}' sign at end of document",
+        "FATAL_INVALID_STARTSWITH_I": "Expected literal starting with 'I' to be Infinity",
+        "FATAL_INVALID_STARTSWITH_N": "Expected literal starting with 'N' to be NaN or None",
+        "FATAL_INVALID_STARTSWITH_i": "Expected literal starting with 'i' to be inf",
+        "FATAL_HEX_INT_OVERFLOW": "Hex number too large for a 64-bit signed integer type",
+        "FATAL_SECOND_DECIMAL_POINT": "Number with a decimal point in the wrong place",
+        "FATAL_NUM_TRAILING_e_OR_E": "Scientific notation 'e' with no number following",
+        "FATAL_MAX_RECURSION_DEPTH": "Maximum recursion depth (512) reached",
+        "FATAL_UNEXPECTED_EOF": "Unexpected end of file",
+        "FATAL_NO_VALID_LITERAL_POSSIBLE": "No valid literal possible",
+        "FATAL_INVALID_STARTSWITH_t": "Expected literal starting with 't' to be true",
+        "FATAL_INVALID_STARTSWITH_f": "Expected literal starting with 'f' to be false",
+        "FATAL_INVALID_STARTSWITH_T": "Expected literal starting with 'T' to be True",
+        "FATAL_INVALID_STARTSWITH_F": "Expected literal starting with 'F' to be False",
+        "FATAL_INVALID_STARTSWITH_u": "Expected literal starting with 'u' to be undefined",
+        "FATAL_BADLY_LOCATED_CHAR": "Badly located character {0}",
+        "FATAL_NO_INPUT": "No input",
+        "FATAL_ONLY_WHITESPACE_COMMENTS": "Input is only whitespace and maybe comments",
+        "FATAL_JSONL_NOT_ONE_DOC_PER_LINE": "JSON Lines document does not contain exactly one JSON document per line",
+        // ============== SCHEMA messages ==============
+        "SCHEMA_TYPE_MISMATCH": "found type {0}, expected type {1}.",
+        "SCHEMA_TYPE_ARRAY_MISMATCH": "found type {0}, expected one of the types {1}.",
+        "SCHEMA_VALUE_NOT_IN_ENUM": "found value {0}, but the only allowed values are {1}.",
+        "SCHEMA_ARRAY_TOO_LONG": "array required to have no more than {0} items, but it has {1} items.",
+        "SCHEMA_ARRAY_TOO_SHORT": "array required to have at least {0} items, but it has {1} items.",
+        "SCHEMA_CONTAINS_VIOLATION": "Array must have between {0} and {1} items that match \"contains\" schema {2}",
+        "SCHEMA_MINCONTAINS_VIOLATION": "Array must have at least {0} items that match \"contains\" schema {1}",
+        "SCHEMA_OBJECT_MISSING_REQUIRED_KEY": "object missing \"required\" key {0}",
+        "SCHEMA_FALSE_SCHEMA": "the schema is false, so nothing will validate.",
+        "SCHEMA_STRING_DOESNT_MATCH_PATTERN": "string '{0}' does not match regex '{1}'",
+        "SCHEMA_RECURSION_LIMIT_REACHED": "validation has a maximum depth of 128",
+        "SCHEMA_NUMBER_LESS_THAN_MIN": "number {0} less than minimum {1}",
+        "SCHEMA_NUMBER_GREATER_THAN_MAX": "number {0} greater than maximum {1}",
+        "SCHEMA_NUMBER_LESSEQ_EXCLUSIVE_MIN": "number {0} less than or equal to exclusive minimum {1}",
+        "SCHEMA_NUMBER_GREATEREQ_EXCLUSIVE_MAX": "number {0} greater than or equal to exclusive maximum {1}",
+        "SCHEMA_STRING_TOO_LONG": "string {0} had greater than maxLength {1}",
+        "SCHEMA_STRING_TOO_SHORT": "string {0} had less than minLength {1}"
+    },
+    "messageBoxes": {
+        // This object is used to translate message boxes (the little boxes with OK, Yes, No, Cancel buttons that pop up and tell you things or ask you for confirmation).
+        // Each key in this object is the caption of a message box.
+        // Each message box translation has the "text" and "caption" fields:
+        //      The "caption" field is the translation of the caption (the title line of the message box, to the left of the X to close the box).
+        //      The "text" field is the translation of the text inside the message box
+        // As in the "jsonLint" object, the {integer} inside any text have special meaning, so you need to leave those alone.
+        // ===== MessageBoxes in Main.cs =====
+        "Could not open url in web browser": {"caption": "Could not open url in web browser", "text": "While attempting to open URL {0} in web browser, got exception\r\n{1}"},
+        "View syntax errors in document?": {"caption": "View syntax errors in document?", "text": "There were {0} syntax errors in the document. Would you like to see them?\r\n(You can turn off these prompts in the settings (offer_to_show_lint setting))"},
+        "Error while trying to parse {0}": {"caption": "Error while trying to parse {0}", "text": "Could not parse the document because of error\r\n{0}"},
+        "Possible issue with remembering selections": {"caption": "Possible issue with remembering selections", "text": "JsonTools is using the indicators {0} and {1} to remember selections, but one or both of those may collide with another plugin.\r\nIf you see this message and then you notice Notepad++ or a plugin start to behave oddly, please consider creating an issue describing what happened in the JsonTools GitHub repository."},
+        "Pretty-print JSON Lines document?": {"caption": "Pretty-print JSON Lines document?", "text": "Pretty-printing a JSON Lines document will generally lead to it no longer being a valid JSON Lines document. Pretty-print anyway?"},
+        "Error while reformatting INI file": {"caption": "Error while reformatting INI file", "text": "Error while reformatting INI file:\r\n{0}"},
+        "Programmatic error while reformatting JSON": {"caption": "Programmatic error while reformatting JSON", "text": "While attempting to reformat the file's JSON, got a programmatic error:\r\n{0}"},
+        "Failed to parse selected text as JSON": {"caption": "Failed to parse selected text as JSON", "text": "Selected text is not a JSON string"},
+        "JSON to YAML feature has some bugs": {"caption": "JSON to YAML feature has some bugs", "text": "This feature has known bugs that may result in invalid YAML being emitted. Run the tests to see examples. Use it anyway?"},
+        "Error while trying to convert JSON to YAML": {"caption": "Error while trying to convert JSON to YAML", "text": "Could not convert the JSON to YAML because of error\r\n{0}"},
+        "Only arrays can be converted to JSON Lines": {"caption": "Only arrays can be converted to JSON Lines", "text": "Only JSON arrays can be converted to JSON Lines format."},
+        "Could not change path_separator setting": {"caption": "Could not change path_separator setting", "text": "path_separator setting could not be changed from {0} to {1} due to the following error:\r\n{2}"},
+        "No JSON syntax errors for this file": {"caption": "No JSON syntax errors for this file", "text": "No JSON syntax errors (at or below {0} level) for {1}"},
+        "Could not find a node at this position": {"caption": "Could not find a node at this position", "text": "Did not find a node at position {0} of this file"},
+        "Error while formatting path to current position": {"caption": "Error while formatting path to current position", "text": "While attempting to format the path to the current position, the following error occurred:\r\n{0}"},
+        "No valid JSON elements found": {"caption": "No valid JSON elements found", "text": "No valid JSON elements starting with chars {0} were found in the document"},
+        "Error while validating JSON against schema": {"caption": "Error while validating JSON against schema", "text": "While validating JSON against the schema at path {0}, the following error occurred:\r\n{1}"},
+        "Validation failed...": {"caption": "Validation failed...", "text": "The JSON in file {0} DOES NOT validate against the schema at path {1}. Problem 1 of {2}:\r\n{3}"},
+        "Validation succeeded!": {"caption": "Validation succeeded!", "text": "The JSON in file {0} validates against the schema at path {1}."},
+        "JSON schema generation error": {"caption": "JSON schema generation error", "text": "Could not generate a JSON schema. Got the following error:\r\n{0}"},
+        "Error while generating random JSON from schema": {"caption": "Error while generating random JSON from schema", "text": "While trying to generate random JSON from this schema, got an error:\r\n{0}"},
+        "Couldn't parse schemas to fname patterns file": {"caption": "Couldn't parse schemas to fname patterns file", "text": "Failed to parse the schemas to fname patterns file. Got error\r\n{0}"},
+        "schemas to fnames patterns JSON badly formatted": {"caption": "schemas to fnames patterns JSON badly formatted", "text": "Validation of the schemas to fnames patterns JSON must be an object mapping filenames to non-empty arrays of valid regexes (strings).\r\nThere were the following validation problem(s):\r\n{0}"},
+        "No schema exists at path {0}.": {"caption": "No schema exists at path {0}.", "text": "No schema exists at path {0}."},
+        "Regex did not compile (in schemas to fname patterns file)": {"caption": "Regex did not compile (in schemas to fname patterns file)", "text": "While testing all the regexes associated with file {0},\r\nregular expression {1} failed to compile due to an error:\r\n{2}"},
+        "Can't select all children": {"caption": "Can't select all children", "text": "Cannot select all children because one or more of the children does not correspond to a JSON node in the document"},
+        "Error while trying to parse schema": {"caption": "Error while trying to parse schema", "text": "While trying to parse the schema at path {0}, the following error occurred:\r\n{1}"},
+        "Error while compiling JSON schema": {"caption": "Error while compiling JSON schema", "text": "While compiling schema for file \"{0}\", got exception:\r\n{1}"},
+        // ===== MessageBoxes in AboutForm.cs =====
+        "such error very sad": {"caption": "such error very sad", "text": "Could not convert JSON to DSON. Got exception:\r\n{0}"}, // how translate? Shiba Inu only understands English. Such confuse, wow
+        // ===== MessageBoxes in JsonToCsvForm.cs =====
+        "Exception while tabularizing JSON": {"caption": "Exception while tabularizing JSON", "text": "While trying to create CSV from JSON, raised this exception:\r\n{0}"},
+        // ===== MessageBoxes in GrepperForm.cs =====
+        "Json file search error": {"caption": "Json file search error", "text": "While searching JSON files, got an exception:\r\n{0}"},
+        "No errors while searching documents": {"caption": "No errors while searching documents", "text": "No exceptions! {0}"},
+        "Error while sending API requests": {"caption": "Error while sending API requests" /* text is just an exception */},
+        // ===== MessageBoxes in TreeViewer.cs =====
+        "Can't populate JSON tree": {"caption": "Can't populate JSON tree", "text": "Cannot populate the JSON tree because no JSON is stored."},
+        "Error while populating tree": {"caption": "Error while populating tree", "text": "Could not populate JSON tree because of error:\n{0}"},
+        "Compilation error in RemesPath query": {"caption": "Compilation error in RemesPath query", "text": "Could not execute query {0} because of compilation error:\r\n{1}"},
+        "Stop seeing errors?": {"caption": "Stop seeing errors?", "text": "Select Yes to stop seeing error message boxes for this query"},
+        "Runtime error while executing query on selection": {"caption": "Runtime error while executing query on selection", "text": "While executing query {0} on selection between positions {1} and {2}, encountered runtime error:\r\n{3}"},
+        "Runtime error while executing query": {"caption": "Runtime error while executing query", "text": "While executing query {0}, encountered runtime error:\r\n{1}"},
+        "Error while formatting ini file values as strings after RemesPath mutation": {"caption": "Error while formatting ini file values as strings after RemesPath mutation", "text": "Could not mutate ini file because of error while trying to stringify all values:\r\n{0}"},
+        "path_separator setting not configured": {"caption": "path_separator setting not configured", "text": "You chose \"Key/index to clipboard\" with the \"Use path_separator setting\" option, but your path_separator is still the default {0}. The {1} style is being used instead."},
+        "Error while formatting key of tree node": {"caption": "Error while formatting key of tree node", "text": "While attempting to format key {0} using style, the following error occurred:\r\n{1}"},
+        "Can't select object or array in non-JSON": {"caption": "Can't select object or array in non-JSON", "text": "Cannot select an object or an array in a non-JSON document, as it does not correspond to a specific text region"},
+        "Couldn't select associated JSON": {"caption": "Couldn't select associated JSON", "text": "The selected tree node does not appear to correspond to a JSON element in the document."},
+        "Couldn't select children of JSON": {"caption": "Couldn't select children of JSON", "text": "The selected tree node does not appear to correspond to a JSON element in the document."},
+        "Can only select children of object or array": {"caption": "Can only select children of object or array", "text": "The selected JSON is not an object or array, and thus has no children."},
+        // ===== MessageBoxes in SettingsBase.cs =====
+        "Unknown error while parsing JsonTools config file": {"caption": "Unknown error while parsing JsonTools config file", "text": "While parsing JsonTools config file, expected setting \"{0}\" to be type {1}, but got an error.\r\nThat setting was set to its default value of {2}.\r\nThe given value {3} could not be converted for an unknown reason."},
+        "Error while parsing JsonTools config file": {"caption": "Error while parsing JsonTools config file", "text": "While parsing JsonTools config file, expected setting \"{0}\" to be type {1}, but got an error.\r\nThat setting was set to its default value of {2}.\r\nThe given value {3} raised the following error:\r\n{4}"},
+        "Invalid value for setting {0}": {"caption": "Invalid value for setting {0}", "text": "Could not change setting {0} to value {1}, so it will remain set as {2}.\r\nGot the following exception:\r\n{3}"},
+        // ===== MessageBoxes in Npp.cs =====
+        "Nothing to copy to clipboard": {"caption": "Nothing to copy to clipboard", "text": "Couldn't find anything to copy to the clipboard"},
+        // ===== MessageBoxes in SortForm.cs =====
+        "Could not find json at that path": {"caption": "Could not find json at that path", "text": "Could not find json at the specified path ({0}).\r\nGot the following error:\r\n{1}"},
+        "Failed to compile query for sorting": {"caption": "Failed to compile query for sorting", "text": "Based on selected sort method, attempted to compile query \"{0}\",\r\nbut got the following error:\r\n{1}"},
+        "JSON at specified path must be object or array": {"caption": "JSON at specified path must be object or array", "text": "JSON at the specified path must be object or array, got {0}"},
+        "Can only sort arrays": {"caption": "Can only sort arrays", "text": "Can only sort arrays, got JSON of type {0}"},
+        "Error while sorting array": {"caption": "Error while sorting array", "text": "While sorting an array, got the following error:\r\n{0}"},
+        // ===== MessageBoxes in RegexSearchForm.cs =====
+        "Columns to parse as number must be array of integers": {"caption": "Columns to parse as number must be array of integers", "text": "Columns to parse as number must be a nonempty JSON array of integers"}
+    }//,
+    // "exceptions": {
+    //     "DsonDumpException": {
+    //         // all exceptions of this type have this basic format.
+    //         // The {integer} parameters in the basicFormat string are filled by various parameters when the exception is thrown at runtime.
+    //         "basicFormat": "DSON dump error: {0}",
+    //         "messages": {
+    //             "message1": "translated message1"
+    //         }
+    //     }
+    // }
+}

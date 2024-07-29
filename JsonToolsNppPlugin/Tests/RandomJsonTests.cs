@@ -112,7 +112,7 @@ namespace JSON_Tools.Tests
                 foreach (JNode rand in rands)
                 {
                     // make sure all random JSON validates under the schema
-                    bool validates = JsonSchemaValidator.Validates(rand, schema, 0, out List<JsonLint> lints);
+                    bool validates = JsonSchemaValidator.Validates(rand, schema, 0, true, out List<JsonLint> lints);
                     if (!validates)
                     {
                         testsFailed++;
@@ -175,7 +175,7 @@ namespace JSON_Tools.Tests
                 }
             }
             // also test a schema that contains keywords that can't be generated randomly, like contains, minContains, minItems, maxItems, maxContains, and $defs/$ref
-            var kitchenSinkSchemaText = "{\"$defs\":{\"super_fancy\":{\"properties\":{\"b\":{\"anyOf\":[{\"type\": [\"integer\",\"string\"]},{\"contains\":{\"enum\":[1,2,3], \"type\":\"integer\"},\"items\": {\"type\": \"string\", \"minLength\": 3, \"maxLength\": 6},\"maxContains\":2,\"maxItems\":4,\"minContains\":1,\"minItems\":1,\"type\":\"array\"}]},\"c\":{\"type\":[\"integer\",\"null\"]},\"d\": {\"type\": \"boolean\"}},\"required\":[\"b\"],\"type\":\"object\"}},\"$schema\":\"http://json-schema.org/schema#\",\"items\":{\"properties\":{\"a\":{\"type\":\"number\", \"minimum\": -20, \"maximum\": 20},\"b\": {\"items\": {\"properties\": {\"a\": {\"$ref\": \"#/$defs/super_fancy\"}},\"required\":[\"a\"],\"type\":\"object\"},\"type\":\"array\"},\"c\": {\"type\": \"integer\"}},\"required\":[\"a\"],\"type\":\"object\"},\"type\":\"array\"}";
+            var kitchenSinkSchemaText = "{\"$defs\":{\"super_fancy\":{\"properties\":{\"b\":{\"anyOf\":[{\"type\": [\"integer\",\"string\"]},{\"contains\":{\"enum\":[1,2.5,true,\"\"]},\"items\": {\"type\": \"string\", \"minLength\": 3, \"maxLength\": 6},\"maxContains\":2,\"maxItems\":4,\"minContains\":1,\"minItems\":1,\"type\":\"array\"}]},\"c\":{\"type\":[\"integer\",\"null\"]},\"d\": {\"type\": \"boolean\"}},\"required\":[\"b\"],\"type\":\"object\"}},\"$schema\":\"http://json-schema.org/schema#\",\"items\":{\"properties\":{\"a\":{\"type\":\"number\", \"minimum\": -20, \"maximum\": 20},\"b\": {\"items\": {\"properties\": {\"a\": {\"$ref\": \"#/$defs/super_fancy\"}},\"required\":[\"a\"],\"type\":\"object\"},\"type\":\"array\"},\"c\": {\"type\": \"integer\"}},\"required\":[\"a\"],\"type\":\"object\"},\"type\":\"array\"}";
             var kitchenSinkSchema = parser.Parse(kitchenSinkSchemaText);
             ii++;
             for (int i = 0; i < 200; i++)
@@ -195,7 +195,7 @@ namespace JSON_Tools.Tests
                 List<JsonLint> lints;
                 try
                 {
-                    validates = JsonSchemaValidator.Validates(randomFromKitchenSink, kitchenSinkSchema, 0, out lints);
+                    validates = JsonSchemaValidator.Validates(randomFromKitchenSink, kitchenSinkSchema, 0, true, out lints);
                 }
                 catch (Exception ex)
                 {

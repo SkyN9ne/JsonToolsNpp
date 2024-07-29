@@ -22,7 +22,7 @@ namespace JSON_Tools.Forms
             FormStyle.ApplyStyle(this, Main.settings.use_npp_styling);
             HeaderHandlingComboBox.SelectedIndex = 0;
             NewlineComboBox.SelectedIndex = 0;
-            jsonParser = new JsonParser(LoggerLevel.JSON5, false, false, false, false);
+            jsonParser = new JsonParser(LoggerLevel.JSON5, false, false, false);
             settingsValidator = JsonSchemaValidator.CompileValidationFunc(new JsonParser().Parse(
                 "{\r\n" +
                  "\t\"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\r\n" +
@@ -53,7 +53,7 @@ namespace JSON_Tools.Forms
                  "\t\t}\r\n" +
                  "\t]\r\n" +
                  "}"),
-            0);
+            0, false);
             GetTreeViewInRegexMode();
             // check if we have a CSV file
             if (Main.settings.auto_try_guess_csv_delim_newline
@@ -103,7 +103,7 @@ namespace JSON_Tools.Forms
             {
                 JNode columnsToParseAsNumberArr = jsonParser.Parse(ColumnsToParseAsNumberTextBox.Text);
                 if (jsonParser.fatal || !(columnsToParseAsNumberArr is JArray arr) || arr.Length == 0 || arr.children.Any(x => x.type != Dtype.INT))
-                    MessageBox.Show("Columns to parse as number must be a nonempty JSON array of integers", "Columns to parse as number must be int array", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    Translator.ShowTranslatedMessageBox("Columns to parse as number must be a nonempty JSON array of integers", "Columns to parse as number must be array of integers", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 else
                     columnsToParseAsNumber = ", " + columnsToParseAsNumberArr.ToString(false).Slice("1:-1");
             }

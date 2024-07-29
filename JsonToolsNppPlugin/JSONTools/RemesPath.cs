@@ -2291,7 +2291,7 @@ namespace JSON_Tools.JSON_Tools
             }
             if (ex is JsonParserException jpe)
             {
-                return jpe.ToString();
+                return jpe.Translate(true);
             }
             if (ex is RemesPathArgumentException rpae)
             {
@@ -2311,7 +2311,11 @@ namespace JSON_Tools.JSON_Tools
             }
             if (ex is DsonDumpException dde)
             {
-                return $"DSON dump error: {dde.Message}";
+                return dde.ToString();
+            }
+            if (ex is OutOfMemoryException)
+            {
+                return $"System.OutOfMemoryException (JsonTools ran out of memory)";
             }
             string exstr = ex.ToString();
             Match isCast = CAST_REGEX.Match(exstr);
